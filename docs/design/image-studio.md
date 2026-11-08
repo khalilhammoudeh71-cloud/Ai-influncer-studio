@@ -11,3 +11,7 @@ Use the existing charcoal, ivory and brass semantic tokens, quiet borders, 12–
 Validation: TypeScript and production build; actual CreateView browser preview, description examples, shape, expression and disclosure interactions, desktop/mobile layout; live production smoke check. No provider generation charges required for UI validation.
 
 The Change reference photo action beside the persona opens their saved photo library. Choosing a photo and pressing Use as reference persists the primary reference, preserves the old photo, clears its cached face descriptor, and makes the selected photo the first approved identity anchor. Cancel/Escape leaves the persona unchanged. Prompt text is 14px.
+
+## November 8 refinements
+
+The main form exposes the model chooser. Persona and model share a compact header; the 180px prompt uses 13px text. Photo shape and camera angle split a row equally. Default leaves the original prompt untouched; 24 explicit camera viewpoints append a camera instruction to image generation requests. Add a reference opens two choices: the combined persona library or device upload. Example buttons, helper copy and estimated duration are removed. The result toolbar places Download, Edit Image, Upscale 4K and Save to Library on one row. More options precedes the generation action in a reserved footer; upper fields scroll independently so Generate Photo stays visible above mobile navigation at short viewport heights.

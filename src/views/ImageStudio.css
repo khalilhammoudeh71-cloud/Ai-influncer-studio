@@ -65,3 +65,65 @@
 .persona-primary-grid button{padding:4px;overflow:hidden}.persona-primary-grid button[aria-pressed=true]{border-color:var(--accent-primary);box-shadow:0 0 0 1px var(--accent-primary)}
 .persona-primary-grid img{width:100%;aspect-ratio:4/5;object-fit:cover;border-radius:7px}.persona-primary-grid span{display:block;font-size:12px;padding:8px 2px}.persona-primary-dialog footer{position:sticky;bottom:-24px;background:var(--bg-modal);padding:16px 0}.persona-primary-dialog footer>span{font-size:12px;color:var(--text-tertiary)}
 @media(max-width:480px){.persona-primary-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.persona-primary-dialog{padding:18px}.persona-primary-dialog footer{bottom:-18px}}
+/* Compact, viewport-aware photo workspace. The action footer has its own space. */
+.image-studio-page{height:100%;min-height:0;overflow:hidden!important;padding:12px 16px!important}
+.image-studio-page>.creation-workspace-heading{flex-shrink:0;margin-bottom:10px;padding-bottom:8px}
+.image-studio-page>.creation-workspace-heading h1{font-family:inherit;font-size:20px;font-weight:600;line-height:1.3}
+.image-studio-page>.creation-workspace-heading p{display:none}
+.image-studio-page>#advanced-creation-controls{min-height:0}
+.image-studio-workspace{height:100%;min-height:0;padding-bottom:0;grid-template-rows:minmax(0,1fr);gap:20px}
+.image-studio-brief{height:100%;min-height:0;padding:14px;gap:0;overflow:hidden;border-radius:16px}
+.image-studio-fields{flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;display:flex;flex-direction:column;gap:12px;padding:2px 4px 12px 0;scrollbar-width:thin}
+.image-studio-fields>*{flex-shrink:0}
+.image-studio-persona>img{width:40px;height:44px}
+.image-studio-persona label{font-size:12px}
+.image-studio-persona select{font-size:13px;min-height:34px;padding:6px 8px;margin-top:3px}
+.image-studio-change-reference{min-height:26px;margin-top:-8px;font-size:12px;padding:2px 0}
+.image-studio-prompt{gap:6px}
+.image-studio-prompt>label{font-size:14px}
+.image-studio-prompt textarea{height:180px;min-height:180px;font-size:13px;line-height:1.6;padding:10px}
+.image-studio-composition{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px}
+.image-studio-composition label{min-width:0;font-size:12px}
+.image-studio-composition select{min-width:0;font-size:12px;min-height:36px;padding:7px;margin-top:4px}
+.image-studio-model{display:flex;align-items:center;gap:8px;min-height:36px;padding:7px 9px;background:var(--bg-input);border:1px solid var(--border-default);border-radius:10px;text-align:left;font-size:12px}
+.image-studio-model>span{color:var(--text-tertiary);flex-shrink:0}.image-studio-model>strong{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500;flex:1}.image-studio-model>svg{flex-shrink:0}
+.image-studio-upload{font-size:12px!important;min-height:34px}
+.image-studio-footer{flex-shrink:0;position:relative;background:var(--bg-surface);padding-top:4px}
+.image-studio-options{padding:9px 0;border-bottom:0}
+.image-studio-options summary{font-size:12px;min-height:24px;line-height:24px}
+.image-studio-options summary span{display:inline;margin-left:8px;font-size:10px}
+.image-studio-option-content{max-height:min(40dvh,300px);overflow:auto;margin-top:10px;padding:3px 4px 10px 0;overscroll-behavior:contain}
+.image-studio-submit{padding-top:4px;gap:6px;border-top:0}
+.image-studio-submit>button{min-height:44px;font-size:14px}
+.image-studio-submit>div{font-size:10px;line-height:1.4}
+.image-studio-submit>.image-studio-hint{font-size:10px}
+.image-studio-results{height:100%;overflow:auto;padding-right:2px;gap:10px;scrollbar-width:thin}
+.image-studio-canvas{flex-shrink:0;min-height:220px;height:calc(100% - 130px);max-height:600px;border-radius:16px}
+.image-studio-output-model{font-size:10px;color:var(--text-tertiary);margin:0}
+.image-studio-toolkit{display:flex;flex-direction:column;gap:12px}
+.image-studio-actions{display:flex;flex-wrap:nowrap;gap:5px;width:100%}
+.image-studio-actions>button{flex:1;min-width:0;min-height:38px;border-radius:9px;padding:7px 5px;border:1px solid var(--border-default);background:var(--bg-surface);font-size:11px;font-weight:500;display:flex;align-items:center;justify-content:center;gap:4px;white-space:nowrap}
+.image-studio-actions>button svg{width:13px;height:13px;flex-shrink:0}
+@media(max-width:760px){.image-studio-page{overflow-y:auto!important}.image-studio-page>#advanced-creation-controls{flex:none}.image-studio-workspace{height:auto;display:flex;flex-direction:column;max-width:560px;gap:20px}.image-studio-brief{height:calc(100dvh - 230px);min-height:310px;max-height:none;flex-shrink:0}.image-studio-results{height:auto;overflow:visible}.image-studio-canvas{height:55vh;min-height:280px}.image-studio-options summary span{font-size:10px}.image-studio-submit{position:static}}
+
+@media(max-width:900px){.image-studio-actions>button{font-size:10px;padding-inline:4px;gap:3px}}
+.image-studio-page{padding-block:8px!important}
+.image-studio-page>.creation-workspace-heading{margin-bottom:6px;padding-bottom:4px}
+.image-studio-page>.creation-workspace-heading h1{font-size:18px;line-height:1.3}
+.image-studio-persona-and-model{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);gap:10px;align-items:stretch}
+.image-studio-persona{gap:7px;min-width:0}
+.image-studio-persona label{font-size:10px;white-space:nowrap}
+.image-studio-persona select{font-size:12px;min-height:32px;padding:5px;margin-top:2px}
+.image-studio-persona-photo{display:flex;flex-direction:column;align-items:center;gap:2px;flex-shrink:0;width:30px;padding:0}
+.image-studio-persona-photo img{width:30px;height:35px;object-fit:cover;border-radius:6px}
+.image-studio-persona-photo span{font-size:9px;color:var(--text-gold);text-decoration:underline;text-underline-offset:2px;line-height:1.3}
+.image-studio-persona-and-model>.image-studio-model{position:relative;display:flex;flex-direction:column;align-items:flex-start;justify-content:center;gap:4px;padding:6px 22px 6px 8px;font-size:11px}
+.image-studio-persona-and-model>.image-studio-model>strong{flex:none;max-width:100%}
+.image-studio-persona-and-model>.image-studio-model>span{font-size:10px}
+.image-studio-persona-and-model>.image-studio-model>svg{position:absolute;right:6px;top:50%;transform:translateY(-50%);width:12px}
+.image-studio-options{padding-block:6px}
+.image-studio-options summary{min-height:20px;line-height:20px}
+.image-studio-fields{gap:10px}
+.image-studio-options summary span{display:none}
+.image-studio-submit>div{position:absolute;right:0;top:10px;pointer-events:none;font-size:10px;max-width:65%;text-align:right}
+.image-studio-fields{gap:6px}

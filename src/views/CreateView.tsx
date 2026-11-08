@@ -1,3 +1,4 @@
+import {IMAGE_CAMERA_ANGLES,withCameraAngle,type ImageCameraAngle} from '../../shared/imageCameraAngle';
 import PersonaPrimaryReferenceDialog from '../components/PersonaPrimaryReferenceDialog';
 import './ImageStudio.css';
 import ExpressionControls from '../components/ExpressionControls';
@@ -332,6 +333,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
   const [localPersonaId, setLocalPersonaId] = useState<string>(initialPersona?.id || 'none');
   const [naturalLook, setNaturalLook] = useState(initialPersona?.naturalLook ?? true);
   const [identityLock, setIdentityLock] = useState(true);
+  const [imageAngle,setImageAngle]=useState<ImageCameraAngle>('default');
   const [expression,setExpression]=useState<ExpressionId>('auto');
   const [expressionIntensity,setExpressionIntensity]=useState<ExpressionIntensity>('natural');
 
@@ -1180,7 +1182,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
         outfitStyle: selectedOutfit,
         framing: selectedFraming,
         mood: selectedMood,
-        additionalInstructions: withExpression([imagePrompt.trim(), activePresetChips.map(c => PRESET_EXPANSIONS[c]).filter(Boolean).join(', ')].filter(Boolean).join(', '),expression,expressionIntensity),
+        additionalInstructions: withCameraAngle(withExpression([imagePrompt.trim(), activePresetChips.map(c => PRESET_EXPANSIONS[c]).filter(Boolean).join(', ')].filter(Boolean).join(', '),expression,expressionIntensity),imageAngle),
         additionalImages: extraRefs.length > 0 ? extraRefs : undefined,
         naturalLook,
         identityLock,
@@ -1940,12 +1942,14 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
     const missingReference = Boolean(selectedModelInfo?.isIdentityModel && !effectiveRefImage && !activePersona.referenceImage && !uploadedAvatarImage);
     const canGenerate = Boolean(imagePrompt.trim() && selectedModel && !modelsLoading && !busy && !missingReference);
     const cost = (selectedModelInfo?.price || 0) * imageCount;
-    const costLabel = modelsLoading ? 'Checking cost…' : !selectedModel ? 'Choose an image model in More options' : cost > 0 ? billingInfo?.isCreator ? `$${cost.toFixed(3)} estimated` : `${cost} credits estimated` : 'No generation charge shown';
+    const costLabel = modelsLoading ? 'Checking cost…' : !selectedModel ? 'Choose an image model' : cost > 0 ? billingInfo?.isCreator ? `$${cost.toFixed(3)} estimated` : `${cost} credits estimated` : 'No generation charge shown';
     return (
       <div className="image-studio-workspace">
         <section className="image-studio-brief" aria-label="Create a photo">
+          <div className="image-studio-fields">
+          <div className="image-studio-persona-and-model">
           <div className="image-studio-persona">
-            {reference ? <img src={reference} alt="" /> : <UserRound aria-hidden="true" size={28} />}
+            {selectedReferencePersona ? <button type="button" className="image-studio-persona-photo" onClick={()=>setPrimaryReferenceOpen(true)} aria-label="Change reference photo" title="Change reference photo">{reference ? <img src={reference} alt=""/> : <UserRound size={24}/>}<span>Change</span></button> : <UserRound aria-hidden="true" size={24}/> }
             <div>
               <label htmlFor="image-persona">Who's in your photo?</label>
               <select id="image-persona" value={refPersonaId} onChange={e => { const id=e.target.value; setRefPersonaId(id); setLocalPersonaId(id); onSelectPersona(id==='none'?'empty':id); }}>
@@ -1954,46 +1958,36 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
               </select>
             </div>
           </div>
-          {selectedReferencePersona && <button type="button" className="image-studio-change-reference" onClick={() => setPrimaryReferenceOpen(true)}>Change reference photo</button>}
-          <p className="image-studio-hint">{reference ? 'Your saved persona photo helps keep their appearance consistent.' : 'Choose a saved persona, or create anyone you imagine.'}</p>
+          <button type="button" className="image-studio-model" onClick={()=>setIsModelModalOpen(true)} aria-label={`Model: ${selectedModelInfo?.name || 'Choose a model'}`}><span>Model</span><strong>{selectedModelInfo?.name || 'Choose a model'}</strong><ChevronDown size={14}/></button>
+          </div>
           <div className="image-studio-prompt">
             <label htmlFor="image-description">Describe your photo</label>
             <textarea id="image-description" value={imagePrompt} onChange={e => setImagePrompt(e.target.value)} placeholder="A relaxed photo at a sunny café, wearing a cream sweater and smiling naturally…" />
-            <span className="image-studio-hint">Just describe the scene, outfit, and feeling. Everyday words work.</span>
+
           </div>
-          <div className="image-studio-examples" aria-label="Photo ideas">
-            {[
-              ['At a café', 'A candid photo at a sunny café, wearing a cream sweater, holding a coffee and smiling naturally.'],
-              ['Work portrait', 'A natural professional portrait in a bright office, wearing a tailored navy blazer, with a relaxed confident expression.'],
-              ['Outfit photo', 'A full-length street style photo in a casual denim outfit, walking along a city sidewalk in soft afternoon light.'],
-            ].map(([label, prompt]) => <button key={label} type="button" onClick={() => setImagePrompt(prompt)}>{label}</button>)}
-          </div>
+          <div className="image-studio-composition">
           <label className="image-studio-field" htmlFor="image-shape">Photo shape
             <select id="image-shape" value={selectedAspectRatio} onChange={e => setSelectedAspectRatio(e.target.value)}>
               {[...ASPECT_RATIO_OPTIONS, {value:'4:3',label:'Landscape (4:3)'}].map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
             </select>
           </label>
+          <label className="image-studio-field" htmlFor="image-angle">Angle
+            <select id="image-angle" value={imageAngle} onChange={e=>setImageAngle(e.target.value as ImageCameraAngle)}>{IMAGE_CAMERA_ANGLES.map(angle=><option key={angle.id} value={angle.id}>{angle.label}</option>)}</select>
+          </label>
+          </div>
+
           <div>
-            <label className="image-studio-upload"><Plus size={16} aria-hidden="true" /> Add a reference <span>(optional)</span>
-              <input type="file" accept="image/*" multiple onChange={e => { Array.from(e.target.files || []).forEach(file => handleAddRefImage(file)); e.target.value=''; }} />
-            </label>
-            <p className="image-studio-hint">Add an outfit or scene you'd like to use as inspiration.</p>
+            <button type="button" className="image-studio-upload" onClick={()=>setReferencePickerOpen(true)}><Plus size={16} aria-hidden="true"/> Add a reference <span>(optional)</span></button>
             {refImages.length > 0 && <div className="image-studio-references">{refImages.map(ref => <div key={ref.id}><img src={ref.url} alt={ref.name} /><button type="button" aria-label={`Remove ${ref.name}`} onClick={() => setRefImages(prev => prev.filter(r => r.id!==ref.id))}><X size={14}/></button></div>)}</div>}
           </div>
 
-          <div className="image-studio-submit">
-            <div><span>{costLabel}</span><span>Usually under 1 minute</span></div>
-            <button type="button" className="btn-gold-primary" disabled={!canGenerate} onClick={() => { if (canGenerate) void handleImageGenerate(); }}>{busy ? <Loader2 size={18} className="animate-spin"/> : <Sparkles size={18}/>} {busy ? 'Creating your photo…' : imageCount > 1 ? `Generate ${imageCount} photos` : 'Generate photo'}</button>
-            {!busy && !imagePrompt.trim() && <p className="image-studio-hint">Add a description or choose an idea to get started.</p>}
-            {missingReference && <p role="status" className="image-studio-hint">This model needs a persona or reference photo.</p>}
           </div>
+          <div className="image-studio-footer">
           <details className="image-studio-options">
             <summary>More options <span>Expression, style & settings</span></summary>
             <div className="image-studio-option-content">
               <ExpressionControls value={expression} intensity={expressionIntensity} onChange={setExpression} onIntensityChange={setExpressionIntensity} />
               <button type="button" onClick={() => handleEnhanceField(imagePrompt, setImagePrompt, 'imagePrompt')} disabled={!imagePrompt.trim() || !!enhancingField}><Wand2 size={16}/> {enhancingField === 'imagePrompt' ? 'Improving description…' : 'Help improve my description'}</button>
-              <button type="button" onClick={() => setReferencePickerOpen(true)}>Choose saved reference images</button>
-              <button type="button" onClick={() => setIsModelModalOpen(true)}>Image model: {selectedModelInfo?.name || 'Choose a model'}</button>
               <div className="image-studio-settings">
                 <label>Photo quality<select value={selectedResolution} onChange={e => setSelectedResolution(e.target.value)}>{resolutionOpts.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}</select></label>
                 <label>Number of photos<select value={imageCount} onChange={e => setImageCount(Number(e.target.value))}>{[1,2,3,4].map(n => <option key={n} value={n}>{n} {n===1?'photo':'photos'}</option>)}</select></label>
@@ -2191,6 +2185,12 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
 
             </div>
           </details>
+          <div className="image-studio-submit">
+            <div><span>{costLabel}</span></div>
+            <button type="button" className="btn-gold-primary" disabled={!canGenerate} onClick={() => { if (canGenerate) void handleImageGenerate(); }}>{busy ? <Loader2 size={18} className="animate-spin"/> : <Sparkles size={18}/>} {busy ? 'Creating your photo…' : imageCount > 1 ? `Generate ${imageCount} photos` : 'Generate Photo'}</button>
+            {missingReference && <p role="status" className="image-studio-hint">This model needs a persona or reference photo.</p>}
+          </div>
+          </div>
         </section>
         <section className="image-studio-results" aria-label="Your photos">
           <div className="image-studio-result-heading"><h2>{activeVersion ? 'Your photo' : 'A little imagination. A new photo.'}</h2>{activeVersion && <button type="button" onClick={() => setLightboxImageUrl(activeVersion.imageUrl)}><Maximize2 size={16}/> Enlarge</button>}</div>
@@ -2199,11 +2199,12 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
               : activeVersion ? <img src={activeVersion.imageUrl} alt="Your generated photo" />
               : <div className="image-studio-empty"><div className="image-studio-empty-frame"><ImageIcon size={36} strokeWidth={1}/></div><h3>Your photo will appear here</h3><p>Choose who's in it, describe your idea, and press Generate photo.</p></div>}
           </div>
-          {activeVersion && !busy && <div className="image-studio-download"><span>{activeVersion.model}</span><button type="button" onClick={() => downloadFile(activeVersion.imageUrl, 'png')}><Download size={16}/> Download photo</button></div>}
+          {activeVersion && !busy && <p className="image-studio-output-model">{activeVersion.model}</p>}
         {/* Post Generation Toolkit for Active Version */}
         {activeVersion && !isGenerating && !isProcessing && (
-          <div className="space-y-3 bg-[#0E0E10] p-4 rounded-2xl border border-white/10">
-            <div className="flex gap-2">
+          <div className="image-studio-toolkit">
+            <div className="image-studio-actions">
+              <button type="button" onClick={()=>downloadFile(activeVersion.imageUrl,'png')}><Download size={14}/> Download</button>
               <button onClick={() => setPostAction(postAction === 'edit' ? null : 'edit')} className={`flex-1 py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all ${postAction === 'edit' ? 'btn-gold-primary' : 'bg-[#1E1E22] text-[#F5F1E8] hover:border-[#E7C477]/40 border border-white/10'}`}>
                 <Pencil className="w-3.5 h-3.5" /> Edit Image
               </button>
@@ -3941,10 +3942,10 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
   };
 
   return (
-    <div className="flex-1 bg-[var(--bg-base)] text-white p-4 max-w-full mx-auto w-full selection:bg-emerald-500/30 flex flex-col overflow-y-auto overflow-x-hidden custom-scrollbar">
+    <div className={`${mode==='image' && isCapabilityWorkspace ? 'image-studio-page ' : ''}flex-1 bg-[var(--bg-base)] text-white p-4 max-w-full mx-auto w-full selection:bg-emerald-500/30 flex flex-col overflow-y-auto overflow-x-hidden custom-scrollbar`}>
 
       {/* ── CREATE HUB HEADER ── */}
-      <div className="mb-4 flex flex-col md:flex-row md:items-center justify-between gap-3 px-1 border-b border-[#E7C477]/10 pb-3">
+      <div className="creation-workspace-heading mb-4 flex flex-col md:flex-row md:items-center justify-between gap-3 px-1 border-b border-[#E7C477]/10 pb-3">
         <div>
           <h1 className="text-2xl md:text-3xl font-serif text-[#F5F1E8] tracking-tight flex items-center gap-2">
             {isCapabilityWorkspace ? activeWorkspaceMeta.title : 'Create content'}
