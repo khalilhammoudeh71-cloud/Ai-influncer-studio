@@ -1967,7 +1967,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
           </div>
           <label className="image-studio-field" htmlFor="image-shape">Photo shape
             <select id="image-shape" value={selectedAspectRatio} onChange={e => setSelectedAspectRatio(e.target.value)}>
-              {ASPECT_RATIO_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+              {[...ASPECT_RATIO_OPTIONS, {value:'4:3',label:'Landscape (4:3)'}].map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
             </select>
           </label>
           <div>

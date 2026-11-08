@@ -49,8 +49,9 @@
 @media(max-width:1000px){.image-studio-workspace{grid-template-columns:minmax(280px,340px) minmax(0,1fr);gap:20px}.image-studio-brief{padding:20px}.image-studio-submit>div{flex-direction:column;gap:3px}}
 @media(max-width:760px){.image-studio-workspace{grid-template-columns:minmax(0,1fr);gap:28px;max-width:560px}.image-studio-canvas{min-height:320px;height:55vh}.image-studio-submit>div{flex-direction:row}.image-studio-brief{gap:18px}.image-studio-workspace button{touch-action:manipulation}}
 @media(prefers-reduced-motion:reduce){.image-studio-workspace .animate-spin{animation:none}}
-.image-studio-submit{position:sticky;bottom:0;background:var(--bg-surface);padding-top:14px;z-index:2;border-top:1px solid var(--border-subtle)}
+.image-studio-submit{background:var(--bg-surface);padding-top:14px;border-top:1px solid var(--border-subtle)}
 .image-studio-brief{gap:16px}
 .image-studio-prompt textarea{min-height:120px}
 .image-studio-option-content .grid.sm\:grid-cols-6{grid-template-columns:repeat(2,minmax(0,1fr))}
 @media(max-width:760px){.image-studio-submit{position:static}}
+.image-studio-submit{order:1}.image-studio-options{order:2}
