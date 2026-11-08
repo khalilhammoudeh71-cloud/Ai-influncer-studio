@@ -135,3 +135,8 @@
 .image-studio-fields{gap:4px}
 .image-studio-fields{padding-right:10px;scrollbar-gutter:stable}
 .image-studio-option-content{padding-right:10px;scrollbar-gutter:stable}
+.image-studio-canvas{position:relative;height:calc(100% - 54px);padding:4px}
+.image-studio-enlarge{position:absolute;top:12px;right:12px;z-index:1;width:36px;height:36px;display:grid;place-items:center;border:1px solid rgba(255,255,255,.25);border-radius:9px;background:rgba(18,18,20,.8);color:#fff;backdrop-filter:blur(8px)}
+.image-studio-enlarge:hover{background:rgba(18,18,20,.95);border-color:var(--accent-primary)}
+@media(max-width:760px){.image-studio-canvas{height:65vh;min-height:320px}}
+.image-studio-canvas{max-height:none}

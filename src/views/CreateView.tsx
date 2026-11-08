@@ -2203,13 +2203,13 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
           </div>
         </section>
         <section className="image-studio-results" aria-label="Your photos">
-          <div className="image-studio-result-heading"><h2>{activeVersion ? 'Your photo' : 'A little imagination. A new photo.'}</h2>{activeVersion && <button type="button" onClick={() => setLightboxImageUrl(activeVersion.imageUrl)}><Maximize2 size={16}/> Enlarge</button>}</div>
+
           <div className="image-studio-canvas" aria-busy={busy}>
+            {activeVersion && !busy && <button type="button" className="image-studio-enlarge" aria-label="Enlarge image" title="Enlarge image" onClick={()=>setLightboxImageUrl(activeVersion.imageUrl)}><Maximize2 size={18} aria-hidden="true"/></button>}
             {busy ? <div className="image-studio-empty" role="status"><Loader2 size={32} className="animate-spin"/><h3>{isProcessing ? 'Updating your photo…' : 'Creating your photo…'}</h3><p>You can stay here while we bring your idea to life.</p></div>
               : activeVersion ? <img src={activeVersion.imageUrl} alt="Your generated photo" />
               : <div className="image-studio-empty"><div className="image-studio-empty-frame"><ImageIcon size={36} strokeWidth={1}/></div><h3>Your photo will appear here</h3><p>Choose who's in it, describe your idea, and press Generate photo.</p></div>}
           </div>
-          {activeVersion && !busy && <p className="image-studio-output-model">{activeVersion.model}</p>}
         {/* Post Generation Toolkit for Active Version */}
         {activeVersion && !isGenerating && !isProcessing && (
           <div className="image-studio-toolkit">
