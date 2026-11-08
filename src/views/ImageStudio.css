@@ -54,4 +54,3 @@
 .image-studio-prompt textarea{min-height:120px}
 .image-studio-option-content .grid.sm\:grid-cols-6{grid-template-columns:repeat(2,minmax(0,1fr))}
 @media(max-width:760px){.image-studio-submit{position:static}}
-.image-studio-submit{order:1}.image-studio-options{order:2}

@@ -1977,6 +1977,13 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
             <p className="image-studio-hint">Add an outfit or scene you'd like to use as inspiration.</p>
             {refImages.length > 0 && <div className="image-studio-references">{refImages.map(ref => <div key={ref.id}><img src={ref.url} alt={ref.name} /><button type="button" aria-label={`Remove ${ref.name}`} onClick={() => setRefImages(prev => prev.filter(r => r.id!==ref.id))}><X size={14}/></button></div>)}</div>}
           </div>
+
+          <div className="image-studio-submit">
+            <div><span>{costLabel}</span><span>Usually under 1 minute</span></div>
+            <button type="button" className="btn-gold-primary" disabled={!canGenerate} onClick={() => { if (canGenerate) void handleImageGenerate(); }}>{busy ? <Loader2 size={18} className="animate-spin"/> : <Sparkles size={18}/>} {busy ? 'Creating your photo…' : imageCount > 1 ? `Generate ${imageCount} photos` : 'Generate photo'}</button>
+            {!busy && !imagePrompt.trim() && <p className="image-studio-hint">Add a description or choose an idea to get started.</p>}
+            {missingReference && <p role="status" className="image-studio-hint">This model needs a persona or reference photo.</p>}
+          </div>
           <details className="image-studio-options">
             <summary>More options <span>Expression, style & settings</span></summary>
             <div className="image-studio-option-content">
@@ -2181,12 +2188,6 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
 
             </div>
           </details>
-          <div className="image-studio-submit">
-            <div><span>{costLabel}</span><span>Usually under 1 minute</span></div>
-            <button type="button" className="btn-gold-primary" disabled={!canGenerate} onClick={() => { if (canGenerate) void handleImageGenerate(); }}>{busy ? <Loader2 size={18} className="animate-spin"/> : <Sparkles size={18}/>} {busy ? 'Creating your photo…' : imageCount > 1 ? `Generate ${imageCount} photos` : 'Generate photo'}</button>
-            {!busy && !imagePrompt.trim() && <p className="image-studio-hint">Add a description or choose an idea to get started.</p>}
-            {missingReference && <p role="status" className="image-studio-hint">This model needs a persona or reference photo.</p>}
-          </div>
         </section>
         <section className="image-studio-results" aria-label="Your photos">
           <div className="image-studio-result-heading"><h2>{activeVersion ? 'Your photo' : 'A little imagination. A new photo.'}</h2>{activeVersion && <button type="button" onClick={() => setLightboxImageUrl(activeVersion.imageUrl)}><Maximize2 size={16}/> Enlarge</button>}</div>
