@@ -601,7 +601,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
 
   useEffect(() => {
     try {
-      if (imagePrompt) accountLocalStorage.setItem('ai_influencer_draft_prompt', imagePrompt);
+      accountLocalStorage.setItem('ai_influencer_draft_prompt', imagePrompt);
     } catch (e) {}
   }, [imagePrompt]);
 
@@ -1965,7 +1965,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
           </div>
           <div className="image-studio-prompt">
             <label htmlFor="image-description" className="sr-only">Describe your photo</label>
-            <textarea id="image-description" value={imagePrompt} onChange={e => setImagePrompt(e.target.value)} placeholder="Describe your photo" />
+            <textarea id="image-description" value={imagePrompt} onChange={e => setImagePrompt(e.target.value)} placeholder="describe your scene here" />
 
           </div>
           <label className="image-studio-model-select" htmlFor="image-model"><span>Model</span>
