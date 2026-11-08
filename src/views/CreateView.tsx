@@ -1961,8 +1961,8 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
           <button type="button" className="image-studio-model" onClick={()=>setIsModelModalOpen(true)} aria-label={`Model: ${selectedModelInfo?.name || 'Choose a model'}`}><span>Model</span><strong>{selectedModelInfo?.name || 'Choose a model'}</strong><ChevronDown size={14}/></button>
           </div>
           <div className="image-studio-prompt">
-            <label htmlFor="image-description">Describe your photo</label>
-            <textarea id="image-description" value={imagePrompt} onChange={e => setImagePrompt(e.target.value)} placeholder="A relaxed photo at a sunny café, wearing a cream sweater and smiling naturally…" />
+            <label htmlFor="image-description" className="sr-only">Describe your photo</label>
+            <textarea id="image-description" value={imagePrompt} onChange={e => setImagePrompt(e.target.value)} placeholder="Describe your photo" />
 
           </div>
           <div className="image-studio-composition">
