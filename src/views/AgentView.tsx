@@ -557,7 +557,6 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
     try{const res=await authFetch(`/api/agent-runs/${encodeURIComponent(id)}/${action}`,{method:'POST'});const data=await res.json();if(!res.ok)throw new Error(data.error);syncBackgroundRun(data.run);}catch(e){toast.error(e instanceof Error?e.message:'Could not update plan');}
   };
 
-  const [projectName,setProjectName] = useState('');
   const [historySaving,setHistorySaving] = useState(false);
   const [historySaveFailed,setHistorySaveFailed] = useState(false);
   const effectiveSelectedPersonaId = propSelectedPersonaId;
@@ -3166,12 +3165,7 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
               <select id="super-agent-project" aria-label="Super Agent project" disabled={isSending || isLiveVoiceCallActive || isStudioLoading || isCloningVoice || messages.some(m=>(m.isExecuting && !m.backgroundRunId) || m.execSteps?.some(s=>s.isActionLoading)) || historySaving || historySaveFailed} value={projectId} onChange={e=>onProjectChange(e.target.value)} className="max-w-44 rounded-xl border border-white/10 bg-[#1C1C20] px-3 py-2 text-xs font-semibold text-zinc-200 sm:max-w-56">
                 {projects.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}
               </select>
-            <details className="relative text-xs text-zinc-300"><summary className="flex cursor-pointer list-none items-center gap-1 rounded-xl border border-white/10 px-3 py-2 font-semibold hover:border-[#E7C477]/30 hover:text-[#F2D58D]"><Plus size={13} /> New</summary>
-              <form onSubmit={e=>{e.preventDefault();onCreateProject(projectName);}} className="absolute top-11 right-0 z-50 w-64 rounded-xl border border-white/15 bg-[#1C1C20] p-3 shadow-xl">
-                <input aria-label="New project name" value={projectName} onChange={e=>setProjectName(e.target.value)} maxLength={80} placeholder="Campaign name" className="w-full rounded-lg bg-black/30 p-2" />
-                <button disabled={!projectName.trim() || isSending || isLiveVoiceCallActive || isStudioLoading || isCloningVoice || messages.some(m=>(m.isExecuting && !m.backgroundRunId) || m.execSteps?.some(s=>s.isActionLoading)) || historySaving || historySaveFailed} className="mt-2 rounded-lg bg-[#E7C477] px-3 py-2 text-black disabled:opacity-40">Create project</button>
-              </form>
-            </details>
+            <button type="button" aria-label="New chat" onClick={()=>onCreateProject(`Chat ${projects.length}`)} disabled={isSending || isLiveVoiceCallActive || isStudioLoading || isCloningVoice || messages.some(m=>(m.isExecuting && !m.backgroundRunId) || m.execSteps?.some(s=>s.isActionLoading)) || historySaving || historySaveFailed} className="flex items-center gap-1 rounded-xl border border-white/10 px-3 py-2 text-xs font-semibold text-zinc-300 hover:border-[#E7C477]/30 hover:text-[#F2D58D] disabled:opacity-40"><Plus size={13} /> New</button>
             <span role="status" className="text-xs text-zinc-400">{historySaveFailed ? 'History not saved' : historySaving ? 'Saving history…' : ''}</span>
           </div>
 
