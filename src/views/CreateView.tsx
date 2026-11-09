@@ -1,14 +1,19 @@
+import LatestVideoModels from '../components/LatestVideoModels';
+import VideoIconSelect from '../components/VideoIconSelect';
+import './VideoStudio.css';
 import CompanyModelSelect from '../components/CompanyModelSelect';
 import {imageModelMenu,resolveImageModelChoice} from '../../shared/imageModelMenu';
 import {IMAGE_CAMERA_ANGLES,withCameraAngle,type ImageCameraAngle} from '../../shared/imageCameraAngle';
 import PersonaPrimaryReferenceDialog from '../components/PersonaPrimaryReferenceDialog';
 import './ImageStudio.css';
 import ExpressionControls from '../components/ExpressionControls';
-import {withExpression,type ExpressionId,type ExpressionIntensity} from '../../shared/personaExpression';
+import {EXPRESSIONS,withExpression,type ExpressionId,type ExpressionIntensity} from '../../shared/personaExpression';
 import CarouselImageDialog from '../components/CarouselImageDialog';
 import { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
+  Clock,
+  VolumeX,
   Copy,
   Sparkles,
   FileText,
@@ -398,15 +403,6 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
     return () => clearInterval(interval);
   }, [mode]);
 
-  const [activeVideoSlideIndex, setActiveVideoSlideIndex] = useState(0);
-  useEffect(() => {
-    if (mode !== 'video') return;
-    const interval = setInterval(() => {
-      setActiveVideoSlideIndex(prev => (prev + 1) % 4);
-    }, 5500);
-    return () => clearInterval(interval);
-  }, [mode]);
-
   // Asset Picker Modal State for CreateView
   const [isCreateAssetPickerOpen, setIsCreateAssetPickerOpen] = useState(false);
   const [createAssetPickerCallback, setCreateAssetPickerCallback] = useState<((url: string) => void) | null>(null);
@@ -608,7 +604,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
 
   useEffect(() => {
     try {
-      if (videoPrompt) accountLocalStorage.setItem('ai_influencer_draft_video_prompt', videoPrompt);
+      accountLocalStorage.setItem('ai_influencer_draft_video_prompt', videoPrompt);
     } catch (e) {}
   }, [videoPrompt]);
 
@@ -1882,61 +1878,6 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
     }
   ];
 
-  const VIDEO_HERO_SLIDES = [
-    {
-      title: "Minimax v2",
-      desc: "Create dynamic cinematic video action clips with fluid subject movements and realistic physics.",
-      videoUrl: "/demo-assets/showcase-1.mp4",
-      thumbnails: [
-        "/demo-assets/showcase-1.mp4",
-        "/demo-assets/showcase-2.mp4",
-        "/demo-assets/showcase-3.mp4",
-        "/demo-assets/showcase-4.mp4"
-      ],
-      badge: "Text-to-Video",
-      badgeColor: "bg-amber-500/10 text-amber-400 border-amber-500/20"
-    },
-    {
-      title: "Luma Dream Machine",
-      desc: "Produce complex physics simulations and camera pans based on static reference images.",
-      videoUrl: "/demo-assets/video-preview.mp4",
-      thumbnails: [
-        "/demo-assets/video-preview.mp4",
-        "/demo-assets/generated-talking.mp4",
-        "/demo-assets/showcase-1.mp4",
-        "/demo-assets/showcase-2.mp4"
-      ],
-      badge: "Image-to-Video",
-      badgeColor: "bg-[var(--accent-muted)] text-[var(--accent-primary)] border-[var(--border-strong)]"
-    },
-    {
-      title: "Kling AI 1.5",
-      desc: "Ultra-consistent human actions, facial expressions, and complex spatial object movements.",
-      videoUrl: "/demo-assets/showcase-2.mp4",
-      thumbnails: [
-        "/demo-assets/showcase-3.mp4",
-        "/demo-assets/showcase-4.mp4",
-        "/demo-assets/video-preview.mp4",
-        "/demo-assets/generated-talking.mp4"
-      ],
-      badge: "Text-to-Video",
-      badgeColor: "bg-amber-500/10 text-amber-400 border-amber-500/20"
-    },
-    {
-      title: "Runway Gen-3 Alpha",
-      desc: "Hollywood-grade cinematic outputs, photorealistic character skins, and high-fidelity movement controls.",
-      videoUrl: "/demo-assets/generated-talking.mp4",
-      thumbnails: [
-        "/demo-assets/generated-talking.mp4",
-        "/demo-assets/showcase-2.mp4",
-        "/demo-assets/showcase-4.mp4",
-        "/demo-assets/showcase-1.mp4"
-      ],
-      badge: "Video-to-Video",
-      badgeColor: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
-    }
-  ];
-
   const renderImageMode = () => {
     const selectedReferencePersona = refPersonaId !== 'none' ? personas.find(p => p.id === refPersonaId) : null;
     const reference = selectedReferencePersona?.referenceImage || selectedReferencePersona?.avatar;
@@ -2312,6 +2253,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
     const selectedVideoType = getVideoModelType(selectedVideoInfo || { id: selectedVideoModel });
     const isI2V = selectedVideoType === 'image-to-video';
     const isV2V = selectedVideoType === 'video-to-video';
+    const videoCostHint=selectedVideoInfo?.price ? (billingInfo?.isCreator ? ` · Estimated $${selectedVideoInfo.price.toFixed(3)}` : ` · Estimated ${selectedVideoInfo.price} credits`) : '';
 
     const videoAspectRatioOptions = [
       { value: '16:9', label: '16:9 Landscape' },
@@ -2330,7 +2272,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
     const effectiveVideoSource = videoSourceVideo || videoSourceImage || (videoSourcePersonaId !== 'none' ? (personas.find(p => p.id === videoSourcePersonaId)?.referenceImage ?? null) : null);
 
     return (
-      <div className="flex flex-col gap-4 w-full max-w-5xl mx-auto pb-10">
+      <div className="video-studio-workspace flex flex-col gap-4 w-full max-w-5xl mx-auto pb-10">
 
         {extendError && (
           <div role="alert" className="rounded-xl border border-red-400/40 bg-red-950/30 p-3 text-sm text-red-100">
@@ -2339,7 +2281,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
           </div>
         )}
         {/* ── TOP SECTION: Alternating Hero Slideshow / Video Output Canvas ── */}
-        <div className={`relative w-full ${videoResult?.videoUrl || isGenerating || isExtending ? 'min-h-[220px] h-[min(42dvh,420px)] max-h-[420px]' : 'h-44 md:h-52 max-h-[220px]'} rounded-[24px] border border-white/10 bg-[#08080A] overflow-hidden shadow-2xl transition-all duration-500`}>
+        <div className={`relative w-full ${videoResult?.videoUrl || isGenerating || isExtending ? 'min-h-[220px] h-[min(42dvh,420px)] max-h-[420px]' : 'h-auto'} rounded-[24px] border border-white/10 bg-[#08080A] overflow-hidden shadow-2xl transition-all duration-500`}>
           {isGenerating || isExtending ? (
             <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-[#08080A]/90 z-10 select-none">
               <Loader2 className="w-8 h-8 text-[#E7C477] animate-spin" />
@@ -2405,55 +2347,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
               </div>
             </div>
           ) : (
-            /* Alternating Hero Video Slideshow */
-            <div className="relative w-full h-full h-44 md:h-52 max-h-[220px] flex items-center justify-between overflow-hidden px-5 md:px-8 bg-[#141416]">
-              <AnimatePresence mode="wait">
-                <motion.div
-                  key={activeVideoSlideIndex}
-                  initial={{ opacity: 0, x: -10 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  exit={{ opacity: 0, x: 10 }}
-                  transition={{ duration: 0.5 }}
-                  className="w-full h-full flex items-center justify-between gap-6"
-                >
-                  {/* Left Side: Video Model Details */}
-                  <div className="flex-1 flex flex-col justify-center text-left py-4 select-none">
-                    <span className={`self-start text-xs font-bold uppercase tracking-widest px-2 py-0.5 rounded-full border mb-1.5 ${VIDEO_HERO_SLIDES[activeVideoSlideIndex].badgeColor}`}>
-                      {VIDEO_HERO_SLIDES[activeVideoSlideIndex].badge}
-                    </span>
-                    <h2 className="text-xs font-bold uppercase text-[#8C909A] tracking-wider mb-0.5 leading-none">
-                      Start Creating with
-                    </h2>
-                    <h1 className="text-xl md:text-2xl font-serif tracking-tight mb-1.5 leading-tight text-[#F5F1E8]">
-                      {VIDEO_HERO_SLIDES[activeVideoSlideIndex].title}
-                    </h1>
-                    <p className="text-xs md:text-xs text-[#8C909A] font-medium leading-relaxed max-w-md">
-                      {VIDEO_HERO_SLIDES[activeVideoSlideIndex].desc}
-                    </p>
-                  </div>
-
-                  {/* Right Side: Showcase Video Thumbnails */}
-                  <div className="hidden sm:flex items-center gap-2 md:gap-3 shrink-0 py-2">
-                    {VIDEO_HERO_SLIDES[activeVideoSlideIndex].thumbnails.map((thumbUrl, idx) => (
-                      <div
-                        key={idx}
-                        className="relative w-20 md:w-24 h-28 md:h-32 rounded-xl overflow-hidden border border-white/10 bg-black shadow-lg shadow-black/40 hover:scale-105 hover:border-[#E7C477]/40 transition-all duration-300"
-                      >
-                        <video
-                          src={thumbUrl}
-                          autoPlay
-                          loop
-                          muted
-                          playsInline
-                          preload="auto"
-                          className="w-full h-full object-cover pointer-events-none"
-                        />
-                      </div>
-                    ))}
-                  </div>
-                </motion.div>
-              </AnimatePresence>
-            </div>
+            <LatestVideoModels models={videoModels}/> 
           )}
         </div>
 
@@ -2462,40 +2356,65 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
           <img src={videoResult.sceneImageUrl} alt="The identity-checked scene used to start this video" className="mt-3 max-h-64 rounded-lg object-contain" />
         </details>}
 
-        {/* ── BOTTOM SECTION: Curved Premium Video Prompt Box ── */}
-        <div className="relative bg-[#08080A] border border-white/10 rounded-[24px] p-4.5 space-y-3.5 focus-within:border-[#E7C477]/50 focus-within:shadow-[0_0_30px_rgba(231,196,119,0.05)] transition-all duration-300">
-
-          {/* Sub-Mode Selector Tabs */}
-          <div className="flex border-b border-white/5 bg-[#141416] p-1 rounded-xl">
-            {[
-              { id: 'generate', label: 'Generate Video', desc: 'Create from text or image' },
-              { id: 'edit', label: 'Edit Video / V2V', desc: 'Modify using reference video' },
-              { id: 'extend', label: 'Extend Video', desc: 'Lengthen from last frame' }
-            ].map(subMode => {
-              const isActive = videoSubMode === subMode.id;
-              return (
-                <button
-                  key={subMode.id}
-                  type="button"
-                  onClick={() => setVideoSubMode(subMode.id as any)}
-                  className={`flex-1 py-1.5 px-3 rounded-lg transition-all text-center flex flex-col items-center justify-center ${
-                    isActive
-                      ? 'bg-[#E7C477]/15 border border-[#E7C477]/30 text-[#F2D58D] font-bold shadow-lg'
-                      : 'border border-transparent text-[#8C909A] hover:text-white hover:bg-white/[0.02]'
-                  }`}
-                >
-                  <span className="text-xs font-bold tracking-wide leading-none">{subMode.label}</span>
-                  <span className="text-xs text-[#8C909A] mt-0.5 hidden md:inline font-medium">{subMode.desc}</span>
-                </button>
-              );
-            })}
+        <div className="video-prompt-composer">
+          <div className="video-mode-tabs">{([{id:'generate',label:'Generate Video'},{id:'edit',label:'Edit Video / V2V'},{id:'extend',label:'Extend Video'}] as const).map(tab=><button type="button" key={tab.id} aria-pressed={videoSubMode===tab.id} onClick={()=>setVideoSubMode(tab.id)}>{tab.label}</button>)}</div>
+          <div className="video-prompt-body">
+            <textarea id="video-scene-description" aria-label="Describe the scene" placeholder="Describe the scene" value={videoPrompt} onChange={e=>setVideoPrompt(e.target.value)}/>
+            {effectiveVideoSource&&<div className="video-reference-chip">{videoSourceVideo?<Film size={20}/>:<img src={effectiveVideoSource} alt="Video reference"/>}<span>{videoSourceVideoName||videoSourceImageName||(videoSourcePersonaId!=='none'?personas.find(p=>p.id===videoSourcePersonaId)?.name:'Reference')}</span><button type="button" aria-label="Remove video reference" title="Remove reference" onClick={()=>{setVideoSourcePersonaId('none');setVideoSourceImage(null);setVideoSourceImageName(null);setVideoSourceVideo(null);setVideoSourceVideoName(null);}}><X size={14}/></button></div>}
           </div>
+            {/* Hidden iOS/iPad Inputs */}
+            <input
+              ref={videoImageLibraryInputRef}
+              type="file"
+              accept="image/*,video/*,video/mp4,video/quicktime,video/webm,video/x-matroska,.mp4,.mov,.webm,.mkv,.avi"
+              className="hidden"
+              onChange={e => {
+                handleFileUpload(setVideoSourceImage, setVideoSourceImageName)(e);
+                setVideoSourceVideo(null);
+                setVideoSourceVideoName(null);
+              }}
+            />
+            <input
+              ref={videoImageFilesInputRef}
+              type="file"
+              accept="image/*,video/*,video/mp4,video/quicktime,video/webm,video/x-matroska,.mp4,.mov,.webm,.mkv,.avi"
+              className="hidden"
+              onChange={e => {
+                handleFileUpload(setVideoSourceImage, setVideoSourceImageName)(e);
+                setVideoSourceVideo(null);
+                setVideoSourceVideoName(null);
+              }}
+            />
+            <input
+              ref={videoVideoLibraryInputRef}
+              type="file"
+              accept="video/*,video/mp4,video/quicktime,video/webm,video/x-matroska,video/x-msvideo,image/*,.mp4,.mov,.webm,.mkv,.avi,.m4v,.3gp"
+              className="hidden"
+              onChange={e => {
+                handleFileUpload(setVideoSourceVideo, setVideoSourceVideoName)(e);
+                setVideoSourceImage(null);
+                setVideoSourceImageName(null);
+              }}
+            />
+            <input
+              ref={videoVideoFilesInputRef}
+              type="file"
+              accept="video/*,video/mp4,video/quicktime,video/webm,video/x-matroska,video/x-msvideo,image/*,.mp4,.mov,.webm,.mkv,.avi,.m4v,.3gp"
+              className="hidden"
+              onChange={e => {
+                handleFileUpload(setVideoSourceVideo, setVideoSourceVideoName)(e);
+                setVideoSourceImage(null);
+                setVideoSourceImageName(null);
+              }}
+            />
 
-          <div className="flex items-start gap-4">
-            {/* Multi-Format Plus Dropdown (Images & Videos) */}
-            <div className="relative shrink-0">
+
+          <div className="video-prompt-toolbar"><div className="video-prompt-icons">
+            <div className="video-upload-control relative shrink-0">
               <button
                 type="button"
+                aria-label="Add a video or image reference"
+                title="Add a video or image reference"
                 onClick={() => setVideoUploadMenuOpen(!videoUploadMenuOpen)}
                 className="w-10 h-10 rounded-2xl bg-white/[0.04] border border-white/10 flex items-center justify-center text-slate-350 hover:bg-white/10 hover:text-white transition-all shadow-md"
               >
@@ -2505,7 +2424,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
               {videoUploadMenuOpen && (
                 <>
                   <div className="fixed inset-0 z-29" onClick={() => setVideoUploadMenuOpen(false)} />
-                  <div className="absolute left-0 top-full mt-2 w-56 rounded-xl border border-white/10 bg-[#141416] p-1.5 shadow-2xl z-30 space-y-1 select-none">
+                  <div className="absolute left-0 bottom-full mb-2 w-56 rounded-xl border border-white/10 bg-[#141416] p-1.5 shadow-2xl z-30 space-y-1 select-none">
                     <button
                       type="button"
                       onClick={() => {
@@ -2580,145 +2499,9 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
               )}
             </div>
 
-            {/* Hidden iOS/iPad Inputs */}
-            <input
-              ref={videoImageLibraryInputRef}
-              type="file"
-              accept="image/*,video/*,video/mp4,video/quicktime,video/webm,video/x-matroska,.mp4,.mov,.webm,.mkv,.avi"
-              className="hidden"
-              onChange={e => {
-                handleFileUpload(setVideoSourceImage, setVideoSourceImageName)(e);
-                setVideoSourceVideo(null);
-                setVideoSourceVideoName(null);
-              }}
-            />
-            <input
-              ref={videoImageFilesInputRef}
-              type="file"
-              accept="image/*,video/*,video/mp4,video/quicktime,video/webm,video/x-matroska,.mp4,.mov,.webm,.mkv,.avi"
-              className="hidden"
-              onChange={e => {
-                handleFileUpload(setVideoSourceImage, setVideoSourceImageName)(e);
-                setVideoSourceVideo(null);
-                setVideoSourceVideoName(null);
-              }}
-            />
-            <input
-              ref={videoVideoLibraryInputRef}
-              type="file"
-              accept="video/*,video/mp4,video/quicktime,video/webm,video/x-matroska,video/x-msvideo,image/*,.mp4,.mov,.webm,.mkv,.avi,.m4v,.3gp"
-              className="hidden"
-              onChange={e => {
-                handleFileUpload(setVideoSourceVideo, setVideoSourceVideoName)(e);
-                setVideoSourceImage(null);
-                setVideoSourceImageName(null);
-              }}
-            />
-            <input
-              ref={videoVideoFilesInputRef}
-              type="file"
-              accept="video/*,video/mp4,video/quicktime,video/webm,video/x-matroska,video/x-msvideo,image/*,.mp4,.mov,.webm,.mkv,.avi,.m4v,.3gp"
-              className="hidden"
-              onChange={e => {
-                handleFileUpload(setVideoSourceVideo, setVideoSourceVideoName)(e);
-                setVideoSourceImage(null);
-                setVideoSourceImageName(null);
-              }}
-            />
 
-             {/* Prompt input field */}
-            <div className="flex-1 relative">
-              {videoSubMode === 'extend' && !videoResult?.videoUrl ? (
-                <div className="w-full h-20 flex flex-col items-center justify-center bg-black/20 rounded-xl border border-dashed border-white/15 px-4 text-center select-none">
-                  <VideoOff className="w-5 h-5 text-slate-500 mb-1" />
-                  <p className="text-xs font-bold text-slate-400">No generated video found</p>
-                  <p className="text-xs text-slate-400">Generate or play a video above first to extend it.</p>
-                </div>
-              ) : (
-                <textarea
-                  value={videoPrompt}
-                  onChange={e => setVideoPrompt(e.target.value)}
-                  placeholder={
-                    videoSubMode === 'extend'
-                      ? "Describe how the video should continue (e.g. they walk into the room)..."
-                      : (isV2V ? "Enter video editing instructions (e.g. make background snowy)..." : "Describe the video you want to generate in detail...")
-                  }
-                  className="w-full bg-transparent border-0 text-slate-100 placeholder-slate-500 focus:ring-0 outline-none resize-none text-sm h-20 scrollbar-hide py-1"
-                />
-              )}
-
-              {/* Reference Attachment Preview */}
-              {effectiveVideoSource && (
-                <div className="absolute bottom-2 left-0 flex items-center gap-2 bg-black/60 border border-white/10 rounded-xl p-1.5 pr-3 shadow-lg max-w-[280px]">
-                  {videoSourceVideo ? (
-                    <Film className="w-7 h-7 text-[var(--accent-primary)] p-1.5 bg-white/5 rounded-lg shrink-0" />
-                  ) : (
-                    <img src={effectiveVideoSource} className="w-7 h-7 rounded-lg object-cover shrink-0" alt="Ref" />
-                  )}
-                  <span className="text-xs font-bold text-slate-300 truncate">
-                    {videoSourceVideoName || videoSourceImageName || (videoSourcePersonaId !== 'none' ? personas.find(p => p.id === videoSourcePersonaId)?.name : 'Attached Reference')}
-                  </span>
-                  <button
-                    onClick={() => {
-                      setVideoSourcePersonaId('none');
-                      setVideoSourceImage(null);
-                      setVideoSourceImageName(null);
-                      setVideoSourceVideo(null);
-                      setVideoSourceVideoName(null);
-                    }}
-                    className="ml-auto text-slate-400 hover:text-white transition-colors"
-                  >
-                    <X size={10} />
-                  </button>
-                </div>
-              )}
-
-              {/* Prompt enhancement button */}
-              <button
-                type="button"
-                onClick={() => handleEnhanceField(videoPrompt, setVideoPrompt, 'videoPrompt')}
-                disabled={!videoPrompt.trim() || !!enhancingField}
-                className="absolute right-1 top-1 p-2 rounded-xl text-slate-400 hover:text-pink-400 hover:bg-white/[0.04] transition-all disabled:opacity-40"
-              >
-                {enhancingField === 'videoPrompt' ? (
-                  <Loader2 className="w-4 h-4 animate-spin text-pink-400" />
-                ) : (
-                  <Sparkles size={16} />
-                )}
-              </button>
-            </div>
-          </div>
-
-          <ExpressionControls value={expression} intensity={expressionIntensity} onChange={setExpression} onIntensityChange={setExpressionIntensity} />
-
-          {/* Lower Parameter Toolbar */}
-          <div className="flex flex-wrap items-center justify-between gap-2 pt-2.5 border-t border-white/10 w-full overflow-x-hidden">
-            <div className="flex flex-wrap items-center gap-1.5 flex-1 min-w-0">
-
-              {/* 1. Persona Selector Dropdown */}
-              <div className="relative">
-                <select
-                  value={videoSourcePersonaId}
-                  onChange={(e) => {
-                    setVideoSourcePersonaId(e.target.value);
-                    setVideoSourceImage(null);
-                    setVideoSourceImageName(null);
-                    setVideoSourceVideo(null);
-                    setVideoSourceVideoName(null);
-                  }}
-                  className="bg-[#161f30] border border-white/10 rounded-lg px-2.5 py-1 text-xs font-bold text-slate-200 outline-none appearance-none pr-6 hover:bg-white/[0.08] hover:border-white/20 transition-all cursor-pointer h-8 text-ellipsis overflow-hidden max-w-[130px]"
-                >
-                  <option value="none">No Persona Reference</option>
-                  {personas.map(p => (
-                    <option key={p.id} value={p.id}>{p.name}</option>
-                  ))}
-                </select>
-                <ChevronDown className="absolute right-1.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
-              </div>
-
-              {/* 2. Video Model Selector Dropdown */}
-              {isPro && <div className="relative">
-                <CompanyModelSelect
+            <VideoIconSelect label="Persona reference" value={videoSourcePersonaId} options={[{value:'none',label:'No persona reference'},...personas.map(p=>({value:p.id,label:p.name}))]} onChange={id=>{setVideoSourcePersonaId(id);setVideoSourceImage(null);setVideoSourceImageName(null);setVideoSourceVideo(null);setVideoSourceVideoName(null);}} icon={<UserRound size={17}/>}/>
+                <CompanyModelSelect iconOnly triggerIcon={<Cpu size={17}/>} title={`Video model: ${selectedVideoInfo?.name || 'Choose a model'}${videoCostHint}`}
                   value={selectedVideoModel}
                   data-video-model-select
                   aria-label="Video model"
@@ -2772,56 +2555,14 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
                     </optgroup>
                   )}
                 </CompanyModelSelect>
-              </div>}
-
-              {/* 3. Duration Selector Dropdown */}
-              <div className="relative">
-                <select
-                  value={selectedVideoDuration}
-                  onChange={e => setSelectedVideoDuration(Number(e.target.value))}
-                  className="bg-[#161f30] border border-white/10 rounded-lg px-2.5 py-1 text-xs font-bold text-slate-200 outline-none appearance-none pr-6 hover:bg-white/[0.08] hover:border-white/20 transition-all cursor-pointer h-8 text-ellipsis overflow-hidden max-w-[110px]"
-                >
-                  <option value={3}>3 Seconds</option>
-                  <option value={5}>5 Seconds</option>
-                  <option value={8}>8 Seconds</option>
-                  <option value={12}>12 Seconds</option>
-                  <option value={15}>15 Seconds</option>
-                </select>
-                <ChevronDown className="absolute right-1.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
-              </div>
-
-              {/* 4. Aspect Ratio / Resolution Dropdown */}
-              {isPro && <div className="relative">
-                <select
-                  value={selectedVideoResolution}
-                  onChange={e => setSelectedVideoResolution(e.target.value)}
-                  className="bg-[#161f30] border border-white/10 rounded-lg px-2.5 py-1 text-xs font-bold text-slate-200 outline-none appearance-none pr-6 hover:bg-white/[0.08] hover:border-white/20 transition-all cursor-pointer h-8 text-ellipsis overflow-hidden max-w-[130px]"
-                >
-                  {videoResolutionOptions.map(o => (
-                    <option key={o.value} value={o.value}>
-                      {o.label}
-                    </option>
-                  ))}
-                </select>
-                <ChevronDown className="absolute right-1.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
-              </div>}
-
-              {/* 5. Toggle Generate Audio Switch */}
-              <button
-                type="button"
-                onClick={() => setGenerateAudioToggle(!generateAudioToggle)}
-                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold transition-all border h-8 ${
-                  generateAudioToggle
-                    ? 'bg-emerald-600/10 border-emerald-500/30 text-emerald-400'
-                    : 'bg-[#161f30] border-white/10 text-slate-350 hover:bg-white/[0.08]'
-                }`}
-              >
-                <Volume2 size={12} />
-                <span>Audio {generateAudioToggle ? 'ON' : 'OFF'}</span>
-              </button>
-            </div>
-
-             {/* Big CTA Generate Video Button */}
+            <VideoIconSelect label="Video duration" value={String(selectedVideoDuration)} options={[3,5,8,12,15].map(n=>({value:String(n),label:`${n} seconds`}))} onChange={value=>setSelectedVideoDuration(Number(value))} icon={<Clock size={17}/>}/>
+            <VideoIconSelect label="Video aspect ratio" value={selectedVideoAspectRatio} options={videoAspectRatioOptions} onChange={setSelectedVideoAspectRatio} icon={<Layout size={17}/>}/>
+            <VideoIconSelect label="Video resolution" value={selectedVideoResolution} options={videoResolutionOptions} onChange={setSelectedVideoResolution} icon={<Maximize2 size={17}/>}/>
+            <VideoIconSelect label="Facial expression" value={expression} options={EXPRESSIONS.map(item=>({value:item.id,label:item.label}))} onChange={value=>setExpression(value as ExpressionId)} icon={<Smile size={17}/>}/>
+            <VideoIconSelect label="Expression intensity" value={expressionIntensity} options={['subtle','natural','strong'].map(value=>({value,label:value[0].toUpperCase()+value.slice(1)}))} onChange={value=>setExpressionIntensity(value as ExpressionIntensity)} disabled={expression==='auto'} icon={<Sliders size={17}/>}/>
+            <button type="button" className="video-icon-control" aria-label={`Generate audio: ${generateAudioToggle?'on':'off'}`} aria-pressed={generateAudioToggle} title={`Generate audio: ${generateAudioToggle?'on':'off'}`} onClick={()=>setGenerateAudioToggle(!generateAudioToggle)}>{generateAudioToggle?<Volume2 size={17}/>:<VolumeX size={17}/>}</button>
+            <button type="button" className="video-icon-control" aria-label="Improve scene description" title="Improve scene description" disabled={!videoPrompt.trim()||!!enhancingField} onClick={()=>handleEnhanceField(videoPrompt,setVideoPrompt,'videoPrompt')}>{enhancingField==='videoPrompt'?<Loader2 size={17} className="animate-spin"/>:<Wand2 size={17}/>}</button>
+          </div>
             <button
               onClick={videoSubMode === 'extend' ? handleExtendVideo : handleVideoGenerate}
               disabled={
@@ -2830,24 +2571,11 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
                 (videoSubMode === 'generate' && isI2V && !effectiveVideoSource) ||
                 (videoSubMode === 'edit' && !effectiveVideoSource)
               }
-              className="px-3.5 py-1 rounded-lg font-black text-xs btn-gold-primary disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1 transition-all shadow-md group h-7 shrink-0 cursor-pointer"
-            >
-              {isExtending ? (
-                <>
-                  <Loader2 className="w-3 h-3 animate-spin" />
-                  <span>Extending...</span>
-                </>
-              ) : (
-                <>
-                  <Video size={11} className="group-hover:animate-pulse" />
-                  <span>
-                    {videoSubMode === 'extend' ? 'Extend Video' : (videoSubMode === 'edit' ? 'Edit Video' : 'Generate Video')}
-                  </span>
-                </>
-              )}
-            </button>
+              className="video-generate-icon btn-gold-primary"
+              aria-label={videoSubMode==='extend'?'Extend Video':videoSubMode==='edit'?'Edit Video':'Generate Video'}
+              title={`${videoSubMode==='extend'?'Extend video':videoSubMode==='edit'?'Edit video':'Generate video'}${videoCostHint}`}
+            >{isGenerating||isExtending?<Loader2 size={19} className="animate-spin"/>:<Video size={19}/>}</button>
           </div>
-
         </div>
 
       </div>
@@ -3809,7 +3537,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
   };
 
   const renderGuidedCreationWorkspace = () => {
-    if (isPro || !['video', 'talking-avatar'].includes(mode)) return null;
+    if (isPro || !['talking-avatar'].includes(mode)) return null;
 
     const selectedVideoInfo = videoModels.find(model => model.id === selectedVideoModel);
     const selectedInfo = mode === 'image' ? selectedModelInfo : selectedVideoInfo;
@@ -3895,7 +3623,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
     );
   };
 
-  const usesGuidedWorkspace = !isPro && ['video', 'talking-avatar'].includes(mode);
+  const usesGuidedWorkspace = !isPro && mode === 'talking-avatar';
   const hasGuidedOutput = mode === 'image'
     ? Boolean(imageResult || isGenerating || isProcessing)
     : mode === 'video'
@@ -3941,7 +3669,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
           <h1 className="text-2xl md:text-3xl font-serif text-[#F5F1E8] tracking-tight flex items-center gap-2">
             {isCapabilityWorkspace ? activeWorkspaceMeta.title : 'Create content'}
           </h1>
-          {isCapabilityWorkspace && <p className="text-xs text-[#8C909A] mt-0.5 max-w-3xl font-sans">{activeWorkspaceMeta.description}</p>}
+          {isCapabilityWorkspace && mode !== 'video' && <p className="text-xs text-[#8C909A] mt-0.5 max-w-3xl font-sans">{activeWorkspaceMeta.description}</p>}
         </div>
       </div>
 

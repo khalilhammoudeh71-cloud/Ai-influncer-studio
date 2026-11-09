@@ -11,8 +11,8 @@ export function companyOptions(children:ReactNode,provider?:string):CompanyModel
   return companyOptions(child.props.children,child.type==='optgroup'?child.props.label:provider);
  });
 }
-type Props=SelectHTMLAttributes<HTMLSelectElement>&{items?:CompanyModel[];pickerLabel?:string};
-export default function CompanyModelSelect({children,items,value,defaultValue,onChange,disabled,className,id,pickerLabel,...props}:Props){
+type Props=SelectHTMLAttributes<HTMLSelectElement>&{items?:CompanyModel[];pickerLabel?:string;iconOnly?:boolean;triggerIcon?:ReactNode};
+export default function CompanyModelSelect({children,items,value,defaultValue,onChange,disabled,className,id,pickerLabel,iconOnly=false,triggerIcon,...props}:Props){
  const choices=useMemo(()=>items||companyOptions(children),[items,children]);
  const [uncontrolled,setUncontrolled]=useState(String(defaultValue??'')),[open,setOpen]=useState(false),[query,setQuery]=useState(''),[company,setCompany]=useState('');
  const selected=String(value??uncontrolled),current=choices.find(m=>m.id===selected);
@@ -28,7 +28,7 @@ export default function CompanyModelSelect({children,items,value,defaultValue,on
  function close(){dialog.current?.close();setOpen(false);trigger.current?.focus()}
  function choose(item:CompanyModel){if(item.disabled||disabled)return;setUncontrolled(item.id);onChange?.({target:{value:item.id},currentTarget:{value:item.id}} as ChangeEvent<HTMLSelectElement>);close()}
  return <>
-  <button {...dataProps} ref={trigger} id={id} type="button" disabled={disabled} className={`${className||''} company-model-trigger`} aria-label={props['aria-label']} aria-labelledby={props['aria-labelledby']} aria-describedby={[props['aria-describedby'],`${uid}-value`].filter(Boolean).join(' ')} aria-haspopup="dialog" aria-expanded={open} title={props.title||current?.name} onClick={()=>setOpen(true)}><span id={`${uid}-value`}>{current?.name||'Choose model'}</span><ChevronDown size={14} aria-hidden="true"/></button>
+  <button {...dataProps} ref={trigger} id={id} type="button" disabled={disabled} className={`${className||''} company-model-trigger ${iconOnly?'company-model-icon-only':''}`} aria-label={props['aria-label']} aria-labelledby={props['aria-labelledby']} aria-describedby={[props['aria-describedby'],`${uid}-value`].filter(Boolean).join(' ')} aria-haspopup="dialog" aria-expanded={open} title={props.title||current?.name} onClick={()=>setOpen(true)}>{iconOnly&&triggerIcon}<span id={`${uid}-value`} className={iconOnly?'sr-only':undefined}>{current?.name||'Choose model'}</span>{!iconOnly&&<ChevronDown size={14} aria-hidden="true"/>}</button>
   {open&&createPortal(<dialog ref={dialog} aria-labelledby={`${uid}-title`} className="company-model-dialog" onCancel={event=>{event.preventDefault();close()}} onClose={()=>setOpen(false)}>
    <header><h2 id={`${uid}-title`}>{label}</h2><button type="button" onClick={close} aria-label="Close model picker"><X size={20}/></button></header>
    <div className="company-model-search"><Search size={16}/><input type="search" aria-label="Search companies or models" placeholder="Search companies or models" value={query} onChange={e=>setQuery(e.target.value)}/></div>
