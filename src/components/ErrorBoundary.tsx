@@ -1,3 +1,4 @@
+import { claimChunkReload, freshStudioUrl, isChunkLoadError } from '../utils/chunkRecovery';
 import React, { Component, ErrorInfo, ReactNode } from 'react';
 import { RefreshCw, AlertTriangle, Home } from 'lucide-react';
 
@@ -26,27 +27,22 @@ export class ErrorBoundary extends Component<Props, State> {
   public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     console.error('[ErrorBoundary caught error]:', error, errorInfo);
     this.setState({ error, errorInfo });
-    // A deployment can leave an already-open tab with an old lazy chunk URL.
-    // Retry once with a cache-busting query so the new manifest is loaded.
-    if (/dynamically imported module|importing a module script failed|chunk load/i.test(error.message)) {
-      const retryKey = 'studio-dynamic-import-retry';
-      if (!sessionStorage.getItem(retryKey)) {
-        sessionStorage.setItem(retryKey, '1');
-        window.setTimeout(() => {
-          const url = new URL(window.location.href);
-          url.searchParams.set('studio-reload', String(Date.now()));
-          window.location.replace(url.toString());
-        }, 250);
-      }
+    // Old lazy-module URLs can disappear after any deployment, not just the first.
+    if (isChunkLoadError(error) && claimChunkReload(() => window.sessionStorage)) {
+      window.setTimeout(this.handleReload, 250);
     }
   }
 
   private handleReset = () => {
+    if (this.state.error && isChunkLoadError(this.state.error)) {
+      this.handleReload();
+      return;
+    }
     this.setState({ hasError: false, error: null, errorInfo: null });
   };
 
   private handleReload = () => {
-    window.location.reload();
+    window.location.replace(freshStudioUrl(window.location.href));
   };
 
   public render() {
