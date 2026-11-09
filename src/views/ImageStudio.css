@@ -142,3 +142,7 @@
 .image-studio-canvas{max-height:none}
 
 .image-studio-model-select>.company-model-trigger{flex:1;min-width:0;min-height:34px;font-size:12px;padding:6px 8px}
+.image-studio-persona{gap:10px}
+.image-studio-persona-photo{width:52px;min-height:76px;gap:5px}
+.image-studio-persona-photo img{width:48px;height:54px;border-radius:8px}
+.image-studio-persona-photo span{font-size:12px;line-height:1.4;font-weight:500}
