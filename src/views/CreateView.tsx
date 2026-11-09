@@ -3941,11 +3941,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
           <h1 className="text-2xl md:text-3xl font-serif text-[#F5F1E8] tracking-tight flex items-center gap-2">
             {isCapabilityWorkspace ? activeWorkspaceMeta.title : 'Create content'}
           </h1>
-          <p className="text-xs text-[#8C909A] mt-0.5 max-w-3xl font-sans">
-            {isCapabilityWorkspace
-              ? activeWorkspaceMeta.description
-              : 'Choose a format below. The guided editor will help you describe and create your content.'}
-          </p>
+          {isCapabilityWorkspace && <p className="text-xs text-[#8C909A] mt-0.5 max-w-3xl font-sans">{activeWorkspaceMeta.description}</p>}
         </div>
       </div>
 
