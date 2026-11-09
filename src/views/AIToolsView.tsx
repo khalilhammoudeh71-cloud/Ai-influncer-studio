@@ -1841,7 +1841,7 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav, i
           videoModels.length > 0 && (
             <div className="flex items-center gap-2">
               <Settings2 size={14} className="text-[var(--text-tertiary)]" />
-              <CompanyModelSelect 
+              <CompanyModelSelect
                 value={selectedVideoModel}
                 onChange={(e) => setSelectedVideoModel(e.target.value)}
                 className="bg-[var(--bg-surface)] border border-[var(--border-default)] rounded-lg px-2 py-1 text-xs text-[var(--text-secondary)] outline-none cursor-pointer"
@@ -1869,7 +1869,7 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav, i
               {allowNsfw ? '🔞 Uncensored' : '🛡️ Safe Mode'}
             </button>
             <Settings2 size={14} className="text-[var(--text-tertiary)]" />
-            <CompanyModelSelect 
+            <CompanyModelSelect
               value={selectedModel}
               onChange={(e) => setSelectedModel(e.target.value)}
               className="bg-[var(--bg-surface)] border border-[var(--border-default)] rounded-lg px-2 py-1 text-xs text-[var(--text-secondary)] outline-none cursor-pointer"
