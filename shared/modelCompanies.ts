@@ -1,6 +1,6 @@
 export type CompanyModel={id:string;name:string;provider?:string;company?:string;disabled?:boolean;description?:string;detail?:string;documentation?:string};
 const known:[string,RegExp][]=[
- ['OpenAI',/openai|gpt[ -]?image|gpt[ -]?\d|chatgpt|dall[ -]?e|o[134]-|tts-1/],
+ ['OpenAI',/openai|gpt[ -]?image|gpt[ -]?\d|chatgpt|dall[ -]?e|^o[134](?:[-\s]|$)|tts-1|\bsora\b/],
  ['Google / Gemini',/google|gemini|nano[ -]?banana|imagen|\bveo\b/],
  ['ByteDance',/bytedance|seedream|seedance|seededit|\bseed[ -]?(?:tts|vc)\b/],
  ['xAI',/\bxai\b|\bgrok\b/],['Anthropic',/anthropic|claude/],

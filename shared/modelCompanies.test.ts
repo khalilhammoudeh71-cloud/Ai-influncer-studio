@@ -6,6 +6,7 @@ test('groups by the creator rather than the hosting service across media',()=>{
  assert.equal(modelCompany({id:'wiro:google/nano-banana-2-1',name:'Nano Banana 2.1',provider:'Wiro'}),'Google / Gemini');
  assert.equal(modelCompany({id:'wavespeed:bytedance/seedance-v2',name:'Seedance 2'}),'ByteDance');
  assert.equal(modelCompany({id:'grok-imagine',name:'Grok Imagine'}),'xAI');
+ assert.equal(modelCompany({id:'wavespeed:kling-video/kling-video-o3-4k',name:'Kling Video O3 4k'}),'Kuaishou');
  assert.equal(modelCompany({id:'eleven_v3',name:'Eleven v3'}),'ElevenLabs');
  assert.equal(modelCompany({id:'heygen',name:'HeyGen Avatar V'}),'HeyGen');
  assert.equal(modelCompany({id:'flux-model',name:'Flux',provider:'OpenAI compatible hosting'}),'Black Forest Labs');
