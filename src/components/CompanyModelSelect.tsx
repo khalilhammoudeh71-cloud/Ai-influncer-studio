@@ -7,7 +7,7 @@ function text(node:ReactNode):string{return Children.toArray(node).map(child=>is
 export function companyOptions(children:ReactNode,provider?:string):CompanyModel[]{
  return Children.toArray(children).flatMap(child=>{
   if(!isValidElement<{children?:ReactNode;value?:string|number;disabled?:boolean;label?:string}>(child))return[];
-  if(child.type==='option')return[{id:String(child.props.value??text(child.props.children)),name:text(child.props.children).replace(/^\d+\.\s*/,''),disabled:child.props.disabled,provider}];
+  if(child.type==='option')return[{id:String(child.props.value??text(child.props.children)),name:text(child.props.children).replace(/^\d+\.\s*/,''),disabled:child.props.disabled,provider:/all models|latest|text.to.video|image.to.video|video.to.video/i.test(provider||'')?undefined:provider}];
   return companyOptions(child.props.children,child.type==='optgroup'?child.props.label:provider);
  });
 }
