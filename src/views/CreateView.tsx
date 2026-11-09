@@ -2347,7 +2347,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
               </div>
             </div>
           ) : (
-            <LatestVideoModels models={videoModels}/> 
+            <LatestVideoModels models={videoModels}/>
           )}
         </div>
 
