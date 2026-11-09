@@ -5,7 +5,6 @@ import {
   Image as ImageIcon,
   Mic2,
   Scissors,
-  Sparkles,
   UserRound,
   WandSparkles,
 } from 'lucide-react';
@@ -96,15 +95,10 @@ export default function QuickStartHub({ activeCapability, onSelectCapability }: 
     <section className="mb-5 overflow-hidden rounded-[24px] border border-[var(--border-default)] bg-[var(--bg-elevated)] shadow-[0_24px_80px_rgba(0,0,0,0.24)]">
       <div className="border-b border-[var(--border-subtle)] bg-[linear-gradient(135deg,rgba(231,196,119,0.11),transparent_58%)] px-4 py-4 sm:px-6">
         <div>
-          <div className="mb-1 flex items-center gap-2 text-xs font-bold tracking-normal text-[var(--accent-primary)]">
-            <Sparkles size={13} /> Choose your format
-          </div>
           <h2 className="text-lg font-semibold text-[var(--text-primary)] sm:text-xl">
             What would you like to make?
           </h2>
-          <p className="mt-1 max-w-2xl text-[11px] leading-relaxed text-[var(--text-muted)]">
-            Pick a format to open its guided editor. You can switch to Advanced controls whenever you need more options.
-          </p>
+
         </div>
       </div>
 
