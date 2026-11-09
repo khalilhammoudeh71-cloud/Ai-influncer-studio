@@ -1,3 +1,4 @@
+import CompanyModelSelect from '../components/CompanyModelSelect';
 import CarouselCreator from '../components/CarouselCreator';
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -1329,7 +1330,7 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav, i
                   <Cpu className="w-3 h-3" /> Model
                 </label>
                 <div className="relative">
-                  <select
+                  <CompanyModelSelect
                     value={angleModel}
                     onChange={e => setAngleModel(e.target.value)}
                     className="w-full bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-xl px-3 py-2.5 text-sm text-white focus:ring-2 focus:ring-[var(--accent-primary)] outline-none appearance-none pr-10"
@@ -1344,8 +1345,7 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav, i
                         </option>
                       );
                     })}
-                  </select>
-                  <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--text-tertiary)] pointer-events-none" />
+                  </CompanyModelSelect>
                 </div>
                 {angleModelInfo?.nsfw && (
                   <span className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/30">
@@ -1841,13 +1841,13 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav, i
           videoModels.length > 0 && (
             <div className="flex items-center gap-2">
               <Settings2 size={14} className="text-[var(--text-tertiary)]" />
-              <select 
+              <CompanyModelSelect 
                 value={selectedVideoModel}
                 onChange={(e) => setSelectedVideoModel(e.target.value)}
                 className="bg-[var(--bg-surface)] border border-[var(--border-default)] rounded-lg px-2 py-1 text-xs text-[var(--text-secondary)] outline-none cursor-pointer"
               >
                 {videoModels.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
-              </select>
+              </CompanyModelSelect>
             </div>
           )
         ) : editModels.length > 0 && (
@@ -1869,14 +1869,14 @@ export default function AIToolsView({ persona, personas, onSelectPersona, nav, i
               {allowNsfw ? '🔞 Uncensored' : '🛡️ Safe Mode'}
             </button>
             <Settings2 size={14} className="text-[var(--text-tertiary)]" />
-            <select 
+            <CompanyModelSelect 
               value={selectedModel}
               onChange={(e) => setSelectedModel(e.target.value)}
               className="bg-[var(--bg-surface)] border border-[var(--border-default)] rounded-lg px-2 py-1 text-xs text-[var(--text-secondary)] outline-none cursor-pointer"
             >
               <option value="auto">✨ Automatic (Best AI for Tool)</option>
               {editModels.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
-            </select>
+            </CompanyModelSelect>
 
           </div>
         )}

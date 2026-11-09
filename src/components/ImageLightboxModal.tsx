@@ -1,3 +1,4 @@
+import CompanyModelSelect from './CompanyModelSelect';
 import { pickDefaultImageModel } from '../../shared/mediaDefaults';
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
@@ -607,7 +608,7 @@ export default function ImageLightboxModal({
                       <ArrowUpCircle size={13} className="text-[#E7C477]" /> Upscaler:
                     </span>
                     
-                    <select
+                    <CompanyModelSelect
                       value={selectedUpscaleModel}
                       onChange={e => setSelectedUpscaleModel(e.target.value)}
                       className="bg-[#1c1d22] border border-white/15 text-zinc-100 text-xs font-medium rounded-xl px-3 py-1.5 outline-none cursor-pointer"
@@ -617,7 +618,7 @@ export default function ImageLightboxModal({
                           {m.name} ({m.provider})
                         </option>
                       ))}
-                    </select>
+                    </CompanyModelSelect>
 
                     <div className="flex bg-black/40 border border-white/10 rounded-xl p-0.5 text-xs">
                       {(['2k', '4k', '8k'] as const).map(res => (
@@ -659,7 +660,7 @@ export default function ImageLightboxModal({
                     <span className="text-xs font-bold text-zinc-300 flex items-center gap-1">
                       <Wand2 size={13} className="text-[var(--accent-primary)]" /> Edit Model:
                     </span>
-                    <select
+                    <CompanyModelSelect
                       value={selectedEditModel}
                       onChange={e => setSelectedEditModel(e.target.value)}
                       className="bg-[#1c1d22] border border-white/15 text-zinc-100 text-xs font-medium rounded-xl px-3 py-1.5 outline-none cursor-pointer"
@@ -669,7 +670,7 @@ export default function ImageLightboxModal({
                           {m.name} ({m.provider})
                         </option>
                       ))}
-                    </select>
+                    </CompanyModelSelect>
                   </div>
 
                   <div className="flex items-center gap-2 bg-[#1c1d22] border border-white/15 focus-within:border-[var(--border-strong)] rounded-xl px-3 py-1.5 shadow-inner">

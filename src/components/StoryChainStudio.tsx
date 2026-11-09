@@ -1,3 +1,4 @@
+import CompanyModelSelect from './CompanyModelSelect';
 import { useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -322,7 +323,7 @@ export default function StoryChainStudio({ persona, onClose }: StoryChainStudioP
           {chainMode === 'video' && (
             <div className="space-y-1.5 bg-white/[0.02] p-3 rounded-xl border border-white/5">
               <label className="text-[10px] font-black uppercase tracking-wider text-amber-400">Video AI Model</label>
-              <select
+              <CompanyModelSelect
                 value={selectedVideoModel}
                 onChange={e => setSelectedVideoModel(e.target.value)}
                 className="w-full bg-[#121218] border border-white/10 rounded-lg px-3 py-2 text-xs font-semibold text-white outline-none"
@@ -330,7 +331,7 @@ export default function StoryChainStudio({ persona, onClose }: StoryChainStudioP
                 {VIDEO_MODELS.map(m => (
                   <option key={m.id} value={m.id}>{m.name}</option>
                 ))}
-              </select>
+              </CompanyModelSelect>
             </div>
           )}
 

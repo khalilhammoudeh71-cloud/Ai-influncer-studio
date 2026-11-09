@@ -1,10 +1,12 @@
+import CompanyModelSelect from './CompanyModelSelect';
 import { useState, type ReactNode } from 'react';
 import { X, SlidersHorizontal, Brain, RotateCcw } from 'lucide-react';
 import { CALL_MODES, CALL_DIALECTS, type CallPreferences } from '../../shared/voiceCallPreferences';
 
 export type ControlChoice = { id: string; name: string; disabled?: boolean };
 export function ControlSelect({label,value,onChange,choices,disabled=false}:{label:string;value:string;onChange:(v:string)=>void;choices:ControlChoice[];disabled?:boolean}) {
-  return <label className="block min-w-0 text-sm text-zinc-300">{label}<select aria-label={label} value={value} disabled={disabled} onChange={e=>onChange(e.target.value)} className="mt-2 min-h-11 w-full min-w-0 rounded-xl border border-white/10 bg-[#151515] px-3 text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-[#E7C477]/60 disabled:opacity-50">{choices.map(c=><option key={c.id} value={c.id} disabled={c.disabled}>{c.name}</option>)}</select></label>;
+  const Select=/model|engine/i.test(label)?CompanyModelSelect:'select';
+  return <label className="block min-w-0 text-sm text-zinc-300">{label}<Select aria-label={label} value={value} disabled={disabled} onChange={e=>onChange(e.target.value)} className="mt-2 min-h-11 w-full min-w-0 rounded-xl border border-white/10 bg-[#151515] px-3 text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-[#E7C477]/60 disabled:opacity-50">{choices.map(c=><option key={c.id} value={c.id} disabled={c.disabled}>{c.name}</option>)}</Select></label>;
 }
 export function SpeechAccuracySetting({enabled,onChange}:{enabled:boolean;onChange:(v:boolean)=>void}) {
   return <label className="flex cursor-pointer items-start justify-between gap-4 rounded-xl bg-white/[0.04] p-3 text-sm text-zinc-100"><span>Recheck speech for accuracy<span className="mt-1 block max-w-sm text-xs leading-relaxed text-zinc-400">Studio calls only. Adds a short pause to recheck your words before replying. Direct provider calls use the provider’s recognition.</span></span><input type="checkbox" checked={enabled} onChange={e=>onChange(e.target.checked)} className="mt-1 size-5 shrink-0 accent-[#E7C477]"/></label>;

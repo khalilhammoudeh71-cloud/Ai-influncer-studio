@@ -1,3 +1,4 @@
+import CompanyModelSelect from './CompanyModelSelect';
 import React, { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -941,8 +942,7 @@ export default function VoiceCloneStudioModal({
                     <span className="text-[10px] text-zinc-400 font-normal">10 Active Voice Cloning Models</span>
                   </label>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[220px] overflow-y-auto pr-1 custom-scrollbar">
-                    {[
+                  <CompanyModelSelect aria-label="Voice cloning model" value={selectedModel} onChange={e=>setSelectedModel(e.target.value)} items={[
                       {
                         id: 'omnivoice',
                         title: 'OmniVoice (Wavespeed)',
@@ -1013,27 +1013,7 @@ export default function VoiceCloneStudioModal({
                         badge: 'Neural HD',
                         desc: 'Studio quality neutral speech synthesis (Shimmer / Nova / Alloy)',
                       },
-                    ].map((m) => (
-                      <div
-                        key={m.id}
-                        onClick={() => setSelectedModel(m.id)}
-                        className={`p-3 rounded-xl border cursor-pointer transition-all flex flex-col justify-between ${
-                          selectedModel === m.id
-                            ? 'bg-amber-500/15 border-[#E7C477] text-white shadow-lg shadow-amber-500/10'
-                            : 'bg-white/5 border-white/10 text-zinc-400 hover:bg-white/10 hover:text-white'
-                        }`}
-                      >
-                        <div className="flex items-center justify-between mb-1">
-                          <span className="text-xs font-bold text-white">{m.title}</span>
-                          <span className="px-1.5 py-0.5 rounded text-[8px] font-black uppercase bg-white/10 text-[#F2D58D]">
-                            {m.badge}
-                          </span>
-                        </div>
-                        <span className="text-[10px] font-mono text-zinc-400 block mb-1">{m.subtitle}</span>
-                        <span className="text-[10px] text-zinc-500 leading-tight">{m.desc}</span>
-                      </div>
-                    ))}
-                  </div>
+                    ].map(m=>({id:m.id,name:m.title,provider:m.subtitle,description:m.desc,detail:m.badge}))}/>
                 </div>
 
                 {/* Step 3: Voice Name, Description Prompt & Fine-Tuning Sliders */}

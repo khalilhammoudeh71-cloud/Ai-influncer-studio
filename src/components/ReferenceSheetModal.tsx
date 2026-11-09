@@ -1,3 +1,4 @@
+import CompanyModelSelect from './CompanyModelSelect';
 import { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { X, Square, Download, Trash2, Pencil, ArrowUpCircle, Sparkles, ChevronDown, RotateCcw, Loader2, RefreshCw } from 'lucide-react';
@@ -372,9 +373,9 @@ export default function ReferenceSheetModal({ persona, onClose }: Props) {
                     <h3 className="font-bold text-sm">Edit Image</h3>
                   </div>
                   {actionError && <p className="text-xs text-rose-400">{actionError}</p>}
-                  <select value={selectedEditModel} onChange={e => setSelectedEditModel(e.target.value)} className="w-full bg-white/8 border border-white/10 rounded-xl px-3 py-2.5 text-sm text-white appearance-none">
+                  <CompanyModelSelect value={selectedEditModel} onChange={e => setSelectedEditModel(e.target.value)} className="w-full bg-white/8 border border-white/10 rounded-xl px-3 py-2.5 text-sm text-white appearance-none">
                     {editModels.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
-                  </select>
+                  </CompanyModelSelect>
                   <div className="flex gap-2">
                     <textarea value={editPrompt} onChange={e => setEditPrompt(e.target.value)} placeholder="Describe your edit…" rows={2} className="flex-1 bg-white/8 border border-white/10 rounded-xl px-3 py-2.5 text-sm text-white placeholder-white/30 resize-none" />
                     <button onClick={handleEnhancePrompt} disabled={actionProcessing} className="self-start px-3 py-2.5 bg-violet-600/30 hover:bg-violet-600/50 text-violet-300 rounded-xl text-xs font-bold transition-all">
@@ -397,9 +398,9 @@ export default function ReferenceSheetModal({ persona, onClose }: Props) {
                     <h3 className="font-bold text-sm">Upscale Image</h3>
                   </div>
                   {actionError && <p className="text-xs text-rose-400">{actionError}</p>}
-                  <select value={selectedUpscaleModel} onChange={e => setSelectedUpscaleModel(e.target.value)} className="w-full bg-white/8 border border-white/10 rounded-xl px-3 py-2.5 text-sm text-white appearance-none">
+                  <CompanyModelSelect value={selectedUpscaleModel} onChange={e => setSelectedUpscaleModel(e.target.value)} className="w-full bg-white/8 border border-white/10 rounded-xl px-3 py-2.5 text-sm text-white appearance-none">
                     {upscaleModels.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
-                  </select>
+                  </CompanyModelSelect>
                   <button onClick={handleUpscale} disabled={actionProcessing} className="w-full flex items-center justify-center gap-2 py-3.5 bg-violet-600 hover:bg-violet-500 disabled:opacity-50 rounded-2xl font-bold text-sm transition-all active:scale-95">
                     {actionProcessing ? <Loader2 size={15} className="animate-spin" /> : <ArrowUpCircle size={15} />}
                     {actionProcessing ? 'Upscaling…' : 'Upscale Now'}

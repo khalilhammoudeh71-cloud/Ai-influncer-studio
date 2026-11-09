@@ -1,3 +1,4 @@
+import CompanyModelSelect from '../components/CompanyModelSelect';
 import { visibleAgentExchange, reuseCampaignAssets } from '../utils/agentExchange';
 import { readProjectBrief, serializeProjectBrief, projectBriefContext } from '../utils/agentProjectMemory';
 import { NativeVoiceCall } from '../components/NativeVoiceCall';
@@ -3218,12 +3219,12 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
 
                 </div>
             <label className="block text-xs text-zinc-300">Text planning model
-              <select aria-label="Text planning model" value={planningModel} onChange={e=>{setPlanningModel(e.target.value);accountLocalStorage.setItem('agent_planning_model',e.target.value);}} className="mt-2 w-full rounded-lg border border-white/15 bg-zinc-900 p-2 text-zinc-100">
+              <CompanyModelSelect aria-label="Text planning model" value={planningModel} onChange={e=>{setPlanningModel(e.target.value);accountLocalStorage.setItem('agent_planning_model',e.target.value);}} className="mt-2 w-full rounded-lg border border-white/15 bg-zinc-900 p-2 text-zinc-100">
                 <option value="">Use configured engine</option>
                 <option value="frontier-grok">Grok 4.6</option>
                 <option value="frontier-gemini-pro">Gemini 3.1 Pro Preview</option>
                 <option value="frontier-gemini-flash">Gemini 3.8 Flash</option>
-              </select>
+              </CompanyModelSelect>
               <p className="mt-1 text-zinc-400">Applies to text tasks. Voice keeps its configured engine. Selected frontier models do not silently fall back.</p>
             </label>
               </div>
@@ -3234,7 +3235,7 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
             {/* LLM Engine Selector */}
             <div className="order-3 rounded-xl border border-white/10 bg-white/[0.03] p-3">
               <label className="mb-2 block text-[10px] font-extrabold uppercase tracking-[0.14em] text-zinc-400" htmlFor="agent-voice-conversation-model">Voice conversation model</label>
-              <select
+              <CompanyModelSelect
                 id="agent-voice-conversation-model"
                 value={voiceLlmModel}
                 onChange={(e) => {
@@ -3292,7 +3293,7 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
                   <option value="grok" className="bg-zinc-900 text-white">xAI Grok — Current configured model</option>
                   <option value="gemini" className="bg-zinc-900 text-white">🤖 Gemini 2.5 Flash (Cloud API)</option>
                 </optgroup>
-              </select>
+              </CompanyModelSelect>
             </div>
 
             {/* Agent's Voice Button */}
@@ -4238,7 +4239,7 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
                           Voice Engine
                           <span className="text-zinc-500 cursor-help font-bold" title="Wavespeed clones voice instantly from video/audio references in 5 seconds. ElevenLabs runs high-fidelity cloning."> ℹ️</span>
                         </span>
-                        <select
+                        <CompanyModelSelect
                           value={voiceEngine}
                           onChange={(e) => setVoiceEngine(e.target.value as any)}
                           className="w-full bg-white/5 border border-white/5 rounded-xl px-3 py-2 text-xs text-white focus:border-amber-500/30 outline-none"
@@ -4252,7 +4253,7 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
                           <option value="zonos2">🌊 Zyphra Zonos v2 (Wavespeed)</option>
                           <option value="elevenlabs">🎙️ ElevenLabs v3 Multilingual (Flagship Accent Clone)</option>
                           <option value="openai-tts">🤖 OpenAI TTS-1 HD (Neural)</option>
-                        </select>
+                        </CompanyModelSelect>
                       </div>
 
                       {/* ElevenLabs inputs */}

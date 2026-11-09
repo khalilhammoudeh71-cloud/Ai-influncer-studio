@@ -1,3 +1,4 @@
+import CompanyModelSelect from '../components/CompanyModelSelect';
 import { LatestVoicePreview, VoiceDraftGuard, type CloneResult } from '../../shared/personaVoiceLifecycle';
 import { restoreSavedVoice, type SavedPersonaVoice } from '../../shared/personaVoiceLibrary';
 import SavedPersonaVoices from '../components/SavedPersonaVoices';
@@ -786,7 +787,7 @@ export default function VoiceView({ persona, personas, onSelectPersona, nav, bil
 
   const EngineToggle = () => (
     <div className="relative w-full min-w-0 sm:w-auto">
-      <select
+      <CompanyModelSelect
         value={voiceEngine}
         onChange={(e) => {
           const val = e.target.value as VoiceEngine;
@@ -811,7 +812,7 @@ export default function VoiceView({ persona, personas, onSelectPersona, nav, bil
         <option value="openai" className="bg-[#0f0f12] text-white">🤖 OpenAI TTS-1 HD</option>
         <option value="gemini" className="bg-[#0f0f12] text-white">♊ Gemini 2.5 TTS</option>
         <option value="qwen-tts" className="bg-[#0f0f12] text-white">Qwen Standard TTS</option>
-      </select>
+      </CompanyModelSelect>
       <div className="absolute inset-y-0 right-3 flex items-center pointer-events-none text-[var(--text-muted)]">
         <ChevronDown size={14} />
       </div>
@@ -911,7 +912,7 @@ export default function VoiceView({ persona, personas, onSelectPersona, nav, bil
         <SlidersHorizontal className="w-4 h-4 text-[#E7C477]" />
         <span className="text-xs font-bold text-[var(--text-primary)] uppercase tracking-widest">Voice Settings</span>
       </div>
-      <label className="block text-sm">Speech model<select aria-label="ElevenLabs speech model" value={speechModel} onChange={e=>setSpeechModel(e.target.value)} className="premium-input mt-1 w-full p-3"><option value="eleven_flash_v2_5">Flash 2.5</option><option value="eleven_turbo_v2_5">Turbo 2.5</option><option value="eleven_multilingual_v2">Multilingual v2</option><option value="eleven_v3">Eleven v3</option></select></label>
+      <label className="block text-sm">Speech model<CompanyModelSelect aria-label="ElevenLabs speech model" value={speechModel} onChange={e=>setSpeechModel(e.target.value)} className="premium-input mt-1 w-full p-3"><option value="eleven_flash_v2_5">Flash 2.5</option><option value="eleven_turbo_v2_5">Turbo 2.5</option><option value="eleven_multilingual_v2">Multilingual v2</option><option value="eleven_v3">Eleven v3</option></CompanyModelSelect></label>
       <label className="block text-sm">Language override<select aria-label="ElevenLabs language override" value={languageOverride} onChange={e=>setLanguageOverride(e.target.value as 'ar' | 'en' | '')} className="premium-input mt-1 w-full p-3"><option value="">Automatic</option><option value="ar">Arabic</option><option value="en">English</option></select></label>
       <label className="block text-sm">Speed · {speakingSpeed.toFixed(2)}×<input aria-label="Speaking speed" type="range" min="0.7" max="1.2" step="0.05" value={speakingSpeed} disabled={speechModel==='eleven_v3'} onChange={e=>setSpeakingSpeed(Number(e.target.value))} className="voice-slider mt-2 w-full"/></label>
       {speechModel==='eleven_v3' && <p className="text-xs text-[var(--text-muted)]">Eleven v3 controls pacing through its delivery; the speed slider is unavailable.</p>}
@@ -1665,53 +1666,7 @@ export default function VoiceView({ persona, personas, onSelectPersona, nav, bil
               {/* Video Model Selector */}
               <div className="space-y-3">
                 <label className="text-[11px] font-black text-[var(--text-muted)] uppercase tracking-[0.2em] block">Video Engine</label>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                  {(videoModels.length > 0 ? videoModels : FALLBACK_VIDEO_MODELS).map(model => {
-                    const isSelected = selectedVideoModel === model.id;
-                    const isGoogle = model.provider.toLowerCase().includes('google');
-                    return (
-                      <button
-                        key={model.id}
-                        onClick={() => setSelectedVideoModel(model.id)}
-                        className={cn(
-                          "relative p-3.5 rounded-2xl border text-left transition-all",
-                          isSelected
-                            ? "bg-gradient-to-br from-[#8D7040]/10 to-[#E7C477]/10 border-[#E7C477]/60 shadow-[0_0_24px_rgba(231,196,119,0.12)]"
-                            : "bg-[var(--bg-elevated)] border-[var(--border-default)] hover:border-[var(--border-strong)] hover:bg-[var(--bg-hover)]"
-                        )}
-                      >
-                        <div className="flex items-center justify-between mb-1.5">
-                          <span className={cn(
-                            "text-xs font-bold",
-                            isSelected ? "text-[var(--text-primary)]" : "text-[var(--text-secondary)]"
-                          )}>{model.name}</span>
-                          <span className={cn(
-                            "text-[9px] px-2 py-0.5 rounded-md font-bold uppercase tracking-wider",
-                            isGoogle
-                              ? "bg-[var(--accent-primary)]/10 text-[var(--accent-primary)]"
-                              : "bg-amber-500/10 text-amber-400"
-                          )}>
-                            {isGoogle ? 'Gemini' : 'Wavespeed'}
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <span className="text-[10px] font-mono text-emerald-400 font-bold">
-                            {(() => {
-                              if (videoModels.length === 0) return 'Loading price…';
-                              if (billingInfo?.isCreator) return model.price > 0 ? `$${model.price.toFixed(3)}` : 'Free';
-                              return `${model.price} credits`;
-                            })()}
-                          </span>
-                          <span className="text-[9px] text-[var(--text-muted)]">•</span>
-                          <span className="text-[9px] text-[var(--text-muted)] truncate">{model.description}</span>
-                        </div>
-                        {isSelected && (
-                          <div className="absolute top-2 right-2 w-2 h-2 rounded-full bg-[#E7C477] shadow-[0_0_8px_rgba(231,196,119,0.5)]" />
-                        )}
-                      </button>
-                    );
-                  })}
-                </div>
+                <CompanyModelSelect aria-label="Voice video model" value={selectedVideoModel} onChange={e=>setSelectedVideoModel(e.target.value)} items={(videoModels.length > 0 ? videoModels : FALLBACK_VIDEO_MODELS).map(model=>({...model,detail:billingInfo?.isCreator?`$${model.price.toFixed(3)}`:`${model.price} credits`}))}/>
               </div>
               <div className="space-y-6">
                 {/* Video Player or Pending State */}

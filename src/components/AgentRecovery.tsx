@@ -1,3 +1,4 @@
+import CompanyModelSelect from './CompanyModelSelect';
 import React, { useState } from 'react';
 import { authFetch } from '../services/imageService';
 import type { RecoveryDetail, RepairProposal } from '../../shared/agentRecovery';
@@ -74,9 +75,9 @@ export function AgentRecovery({ id, planningModel, onRecovered }: { id: string; 
       </div>}
       {!accountIssue && <div className="space-y-2 border-t border-white/10 pt-3">
         {!temporary && <label className="block text-xs text-zinc-400">Repair model
-          <select aria-label="Repair model" value={model} disabled={!!busy || stale} onChange={e => setModel(e.target.value)} className="mt-1 block min-h-11 w-full rounded-lg border border-white/15 bg-zinc-900 px-3 text-sm text-zinc-100 sm:w-auto">
+          <CompanyModelSelect aria-label="Repair model" value={model} disabled={!!busy || stale} onChange={e => setModel(e.target.value)} className="mt-1 block min-h-11 w-full rounded-lg border border-white/15 bg-zinc-900 px-3 text-sm text-zinc-100 sm:w-auto">
             {models.map(([id, label]) => <option key={id} value={id}>{label}</option>)}
-          </select>
+          </CompanyModelSelect>
         </label>}
         <button disabled={!!busy || stale} onClick={() => void suggest()} className="min-h-11 rounded-lg border border-[#E7C477]/40 px-3 text-[#E7C477] disabled:opacity-50">
           {busy === 'suggest' ? 'Analyzing failed step…' : temporary ? 'Review retry' : 'Suggest a repair'}

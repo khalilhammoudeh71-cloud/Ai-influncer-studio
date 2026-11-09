@@ -1,3 +1,4 @@
+import CompanyModelSelect from './CompanyModelSelect';
 import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -726,7 +727,7 @@ export default function MotionControlStudio({ isOpen, onClose, persona }: Motion
                   Motion Model
                 </label>
                 <div className="relative">
-                  <select
+                  <CompanyModelSelect
                     value={selectedModel}
                     onChange={(e) => setSelectedModel(e.target.value)}
                     className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-xs font-bold text-[var(--text-primary)] hover:border-violet-500/30 focus:border-violet-500/50 outline-none transition-all cursor-pointer appearance-none"
@@ -736,7 +737,7 @@ export default function MotionControlStudio({ isOpen, onClose, persona }: Motion
                         {model.name} {model.badge ? ` (${model.badge.toUpperCase()})` : ''}
                       </option>
                     ))}
-                  </select>
+                  </CompanyModelSelect>
                   <div className="absolute inset-y-0 right-4 flex items-center pointer-events-none text-[var(--text-muted)]">
                     <ChevronRight size={14} className="rotate-90" />
                   </div>

@@ -1,3 +1,4 @@
+import CompanyModelSelect from './CompanyModelSelect';
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -250,7 +251,7 @@ export default function ExtendVideoModal({
             <label className="text-[10px] font-black text-white/40 uppercase tracking-widest block">
               2. Extension Video Model
             </label>
-            <select
+            <CompanyModelSelect
               value={selectedModel}
               onChange={e => setSelectedModel(e.target.value)}
               className="w-full bg-[#121218] border border-white/10 rounded-xl px-3 py-2.5 text-xs text-white outline-none"
@@ -258,7 +259,7 @@ export default function ExtendVideoModal({
               {EXTEND_MODELS.map(m => (
                 <option key={m.id} value={m.id}>{m.name}</option>
               ))}
-            </select>
+            </CompanyModelSelect>
           </div>
 
           <button

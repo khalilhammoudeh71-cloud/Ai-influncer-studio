@@ -1,3 +1,4 @@
+import CompanyModelSelect from './CompanyModelSelect';
 import { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -465,7 +466,7 @@ export default function InpaintStudio({ persona, onClose, onSaveImage }: Inpaint
             <label className="text-[10px] font-black text-white/40 uppercase tracking-widest block">
               Inpaint Model & Engine
             </label>
-            <select
+            <CompanyModelSelect
               value={selectedInpaintModel}
               onChange={e => setSelectedInpaintModel(e.target.value)}
               className="w-full bg-[#121218] border border-white/10 rounded-xl px-3 py-2.5 text-xs text-white outline-none"
@@ -473,7 +474,7 @@ export default function InpaintStudio({ persona, onClose, onSaveImage }: Inpaint
               {INPAINT_MODELS.map(m => (
                 <option key={m.id} value={m.id}>{m.name}</option>
               ))}
-            </select>
+            </CompanyModelSelect>
           </div>
 
           {/* Generate Button */}

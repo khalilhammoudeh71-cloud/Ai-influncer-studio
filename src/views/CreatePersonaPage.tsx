@@ -1,3 +1,4 @@
+import CompanyModelSelect from '../components/CompanyModelSelect';
 import { DEFAULT_IMAGE_MODEL_ID } from '../../shared/mediaDefaults';
 import { IDENTITY_VIEWS, type IdentityView } from '../../shared/personaIdentitySet';
 import { VoiceModelPicker } from '../components/VoiceModelPicker';
@@ -2503,9 +2504,9 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
             <h4 className="text-sm font-bold text-white">Preview your voice</h4>
             {selectedVoiceModel === 'elevenlabs' && <div className="flex flex-wrap gap-3">
               <label className="text-xs text-slate-300">Speech model
-                <select aria-label="ElevenLabs speech model" value={elevenLabsSpeechModel} disabled={isCloning || isSaving} onChange={e=>setElevenLabsSpeechModel(e.target.value)} className="luxury-input mt-1 block rounded-xl px-3 py-2.5">
+                <CompanyModelSelect aria-label="ElevenLabs speech model" value={elevenLabsSpeechModel} disabled={isCloning || isSaving} onChange={e=>setElevenLabsSpeechModel(e.target.value)} className="luxury-input mt-1 block rounded-xl px-3 py-2.5">
                   <option value="eleven_flash_v2_5">Flash 2.5</option><option value="eleven_turbo_v2_5">Turbo 2.5</option><option value="eleven_multilingual_v2">Multilingual v2</option><option value="eleven_v3">Eleven v3</option>
-                </select>
+                </CompanyModelSelect>
               </label>
               <label className="text-xs text-slate-300">Language override
                 <select aria-label="ElevenLabs language override" value={elevenLabsLanguageOverride} disabled={isCloning || isSaving} onChange={e=>setElevenLabsLanguageOverride(e.target.value as 'ar' | 'en' | '')} className="luxury-input mt-1 block rounded-xl px-3 py-2.5">

@@ -1,3 +1,4 @@
+import CompanyModelSelect from './CompanyModelSelect';
 import { authFetch } from '../services/imageService';
 import React, { useState, useRef, useEffect } from 'react';
 import { motion } from 'framer-motion';
@@ -347,49 +348,13 @@ export default function TalkingHeadStudio({
             {/* Avatar Engine Selector */}
             <div className="space-y-2">
               <label className="text-[10px] font-black uppercase tracking-widest text-[var(--text-tertiary)]">Avatar Engine</label>
-              <div className="flex bg-[var(--bg-elevated)] rounded-xl p-1 gap-1">
-                <button
-                  disabled={useCustomAvatar}
-                  onClick={() => setEngine('wavespeed')}
-                  className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all ${
-                    engine === 'wavespeed' ? 'bg-gradient-to-r from-pink-600 to-violet-600 text-white shadow-lg' : 'text-[var(--text-secondary)] hover:text-white'
-                  } ${useCustomAvatar ? 'opacity-30 cursor-not-allowed' : ''}`}
-                  title={useCustomAvatar ? "Custom video avatars require HeyGen AI engine" : ""}
-                >
-                  {isPro ? 'Wavespeed LTX' : 'Fast Lipsync'}
-                </button>
-                <button
-                  onClick={() => setEngine('heygen')}
-                  className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all ${
-                    engine === 'heygen' ? 'bg-gradient-to-r from-pink-600 to-violet-600 text-white shadow-lg' : 'text-[var(--text-secondary)] hover:text-white'
-                  }`}
-                >
-                  {isPro ? 'HeyGen AI' : 'Ultra-Realistic'}
-                </button>
-              </div>
+              <CompanyModelSelect aria-label="Talking avatar model" value={engine} onChange={e=>setEngine(e.target.value as 'wavespeed'|'heygen')}><option value="wavespeed" disabled={useCustomAvatar}>Lightricks LTX Lipsync</option><option value="heygen">HeyGen AI</option></CompanyModelSelect>
             </div>
 
             {isPro && engine === 'heygen' && (
               <div className="space-y-2">
                 <label className="text-[10px] font-black uppercase tracking-widest text-[var(--text-tertiary)]">HeyGen Avatar Engine</label>
-                <div className="flex bg-[var(--bg-elevated)] rounded-xl p-1 gap-1">
-                  <button
-                    onClick={() => setHeygenEngine('avatar_iv')}
-                    className={`flex-1 py-1.5 rounded-lg text-[10px] font-bold transition-all ${
-                      heygenEngine === 'avatar_iv' ? 'bg-purple-600/30 border border-purple-500/50 text-white shadow-lg' : 'text-[var(--text-secondary)] hover:text-white'
-                    }`}
-                  >
-                    Avatar IV (v4)
-                  </button>
-                  <button
-                    onClick={() => setHeygenEngine('avatar_v')}
-                    className={`flex-1 py-1.5 rounded-lg text-[10px] font-bold transition-all ${
-                      heygenEngine === 'avatar_v' ? 'bg-purple-600/30 border border-purple-500/50 text-white shadow-lg' : 'text-[var(--text-secondary)] hover:text-white'
-                    }`}
-                  >
-                    Avatar V (v5 - Latest)
-                  </button>
-                </div>
+                <CompanyModelSelect aria-label="HeyGen avatar version" value={heygenEngine} onChange={e=>setHeygenEngine(e.target.value as 'avatar_iv'|'avatar_v')}><option value="avatar_iv">HeyGen Avatar IV (v4)</option><option value="avatar_v">HeyGen Avatar V (v5)</option></CompanyModelSelect>
               </div>
             )}
 

@@ -140,3 +140,5 @@
 .image-studio-enlarge:hover{background:rgba(18,18,20,.95);border-color:var(--accent-primary)}
 @media(max-width:760px){.image-studio-canvas{height:65vh;min-height:320px}}
 .image-studio-canvas{max-height:none}
+
+.image-studio-model-select>.company-model-trigger{flex:1;min-width:0;min-height:34px;font-size:12px;padding:6px 8px}

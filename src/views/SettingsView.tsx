@@ -1,3 +1,4 @@
+import CompanyModelSelect from '../components/CompanyModelSelect';
 import { useState, useEffect, useRef } from 'react';
 import {
   User, Bell, Shield, LogOut, Globe, Moon, Sun, Sparkles, HelpCircle, Crown,
@@ -840,7 +841,7 @@ export default function SettingsView({ nav, personas, user, billingInfo, onBilli
                 <label className="text-[10px] font-bold text-[var(--accent-primary)] uppercase tracking-wider block mb-1.5 flex items-center gap-1.5">
                   <ImageIcon size={10} /> Default Image Model
                 </label>
-                <select
+                <CompanyModelSelect
                   value={defaultImageModel}
                   disabled={!modelsLoaded}
                   onChange={e => {
@@ -850,13 +851,13 @@ export default function SettingsView({ nav, personas, user, billingInfo, onBilli
                   className="w-full bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-xl px-3 py-2.5 text-sm text-white outline-none focus:border-[var(--accent-primary)] transition-colors disabled:opacity-50"
                 >
                   {editModels.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
-                </select>
+                </CompanyModelSelect>
               </div>
               <div>
                 <label className="text-[10px] font-bold text-[var(--accent-primary)] uppercase tracking-wider block mb-1.5 flex items-center gap-1.5">
                   <Video size={10} /> Default Video Model
                 </label>
-                <select
+                <CompanyModelSelect
                   value={defaultVideoModel}
                   disabled={!modelsLoaded}
                   onChange={e => {
@@ -866,7 +867,7 @@ export default function SettingsView({ nav, personas, user, billingInfo, onBilli
                   className="w-full bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-xl px-3 py-2.5 text-sm text-white outline-none focus:border-[var(--accent-primary)]/50 transition-colors disabled:opacity-50"
                 >
                   {videoModels.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
-                </select>
+                </CompanyModelSelect>
               </div>
             </div>
             </details>

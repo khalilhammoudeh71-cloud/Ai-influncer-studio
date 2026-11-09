@@ -1,3 +1,4 @@
+import CompanyModelSelect from '../components/CompanyModelSelect';
 import {imageModelMenu,resolveImageModelChoice} from '../../shared/imageModelMenu';
 import {IMAGE_CAMERA_ANGLES,withCameraAngle,type ImageCameraAngle} from '../../shared/imageCameraAngle';
 import PersonaPrimaryReferenceDialog from '../components/PersonaPrimaryReferenceDialog';
@@ -1713,7 +1714,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
           </div>
         ) : (
           <div className="relative">
-            <select
+            <CompanyModelSelect
               value={value}
               onChange={e => onChange(e.target.value)}
               className="w-full bg-[var(--bg-elevated)] border-[var(--border-default)] rounded-xl px-3 py-2.5 text-sm text-white focus:ring-2 focus:ring-[var(--accent-primary)] outline-none appearance-none pr-10"
@@ -1727,8 +1728,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
                   ))}
                 </optgroup>
               ))}
-            </select>
-            <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--text-tertiary)] pointer-events-none" />
+            </CompanyModelSelect>
           </div>
         )}
         {selectedInfo?.nsfw && (
@@ -1754,7 +1754,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
           </div>
         ) : (
           <div className="relative">
-            <select
+            <CompanyModelSelect
               value={selectedVideoModel}
                   data-video-model-select
                   aria-label="Video model"
@@ -1794,8 +1794,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
                   )}
                 </optgroup>
               )}
-            </select>
-            <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--text-tertiary)] pointer-events-none" />
+            </CompanyModelSelect>
           </div>
         )}
         {selectedVideoInfo?.nsfw && (
@@ -1969,11 +1968,11 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
 
           </div>
           <label className="image-studio-model-select" htmlFor="image-model"><span>Model</span>
-            <select id="image-model" value={imageModelChoice} disabled={modelsLoading} onChange={e=>{setImageModelChoice(e.target.value);setSelectedModel(resolveImageModelChoice(models,e.target.value));}}>
+            <CompanyModelSelect id="image-model" value={imageModelChoice} disabled={modelsLoading} onChange={e=>{setImageModelChoice(e.target.value);setSelectedModel(resolveImageModelChoice(models,e.target.value));}}>
               <option value="default">Default</option>
               <optgroup label="Latest OpenAI, Gemini & Seedream">{imageModelOptions.latest.map(model=><option key={model.id} value={model.id}>{model.name}{model.provider?` · ${model.provider}`:''}</option>)}</optgroup>
               <optgroup label="All models">{imageModelOptions.other.map(model=><option key={model.id} value={model.id}>{model.name}{model.provider?` · ${model.provider}`:''}</option>)}</optgroup>
-            </select>
+            </CompanyModelSelect>
           </label>
           <div className="image-studio-composition">
           <label className="image-studio-field" htmlFor="image-shape">Photo shape
@@ -2719,7 +2718,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
 
               {/* 2. Video Model Selector Dropdown */}
               {isPro && <div className="relative">
-                <select
+                <CompanyModelSelect
                   value={selectedVideoModel}
                   data-video-model-select
                   aria-label="Video model"
@@ -2772,8 +2771,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
                       )}
                     </optgroup>
                   )}
-                </select>
-                <ChevronDown className="absolute right-1.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
+                </CompanyModelSelect>
               </div>}
 
               {/* 3. Duration Selector Dropdown */}
@@ -3339,7 +3337,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
             </div>
 
             <div className="relative">
-              <select
+              <CompanyModelSelect
                 value={selectedLipSyncModel}
                 onChange={(e) => {
                   const val = e.target.value;
@@ -3357,7 +3355,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
                     {m.name} ({m.inputType === 'video' ? 'Video' : 'Image'}-based)
                   </option>
                 ))}
-              </select>
+              </CompanyModelSelect>
               <div className="absolute inset-y-0 right-3 flex items-center pointer-events-none text-[var(--text-muted)]">
                 <ChevronDown size={14} />
               </div>
@@ -3399,24 +3397,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
             {selectedLipSyncModel === 'heygen' && (
               <div className="animate-in fade-in slide-in-from-top-2 duration-300 space-y-2 mt-2">
                 <label className="block text-xs font-extrabold text-[var(--text-muted)] uppercase tracking-wider">HeyGen Avatar Version</label>
-                <div className="flex bg-white/5 border border-white/10 rounded-xl p-1 gap-1">
-                  <button
-                    onClick={() => setTalkingHeygenEngine('avatar_iv')}
-                    className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                      talkingHeygenEngine === 'avatar_iv' ? 'bg-emerald-600/30 border border-emerald-500/50 text-white shadow-lg' : 'text-[var(--text-secondary)] hover:text-white'
-                    }`}
-                  >
-                    Avatar IV (v4)
-                  </button>
-                  <button
-                    onClick={() => setTalkingHeygenEngine('avatar_v')}
-                    className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                      talkingHeygenEngine === 'avatar_v' ? 'bg-emerald-600/30 border border-emerald-500/50 text-white shadow-lg' : 'text-[var(--text-secondary)] hover:text-white'
-                    }`}
-                  >
-                    Avatar V (v5 - Latest)
-                  </button>
-                </div>
+                <CompanyModelSelect aria-label="HeyGen avatar model" value={talkingHeygenEngine} onChange={e=>setTalkingHeygenEngine(e.target.value as 'avatar_iv'|'avatar_v')}><option value="avatar_iv">HeyGen Avatar IV (v4)</option><option value="avatar_v">HeyGen Avatar V (v5)</option></CompanyModelSelect>
               </div>
             )}
           </div>

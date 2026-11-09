@@ -1,3 +1,4 @@
+import CompanyModelSelect from './CompanyModelSelect';
 import { authFetch } from '../services/imageService';
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -181,7 +182,7 @@ export default function ThreeDStudio({ persona, personas, onSelectPersona, onClo
               <label className="text-xs font-bold uppercase tracking-wider text-cyan-400 flex items-center gap-2">
                 <Cpu className="w-3.5 h-3.5" /> Select 3D AI Model
               </label>
-              <select
+              <CompanyModelSelect
                 value={selectedModel}
                 onChange={e => setSelectedModel(e.target.value)}
                 className="w-full bg-[#0e0e15] border border-white/10 rounded-xl px-4 py-3 text-sm font-semibold text-white focus:border-cyan-500 outline-none transition-all"
@@ -191,7 +192,7 @@ export default function ThreeDStudio({ persona, personas, onSelectPersona, onClo
                     {m.name} ({m.provider}) — ${m.price.toFixed(3)}
                   </option>
                 ))}
-              </select>
+              </CompanyModelSelect>
             </div>
 
             {/* Prompt Input */}

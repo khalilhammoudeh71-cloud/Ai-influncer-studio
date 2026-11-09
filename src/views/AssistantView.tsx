@@ -1,3 +1,4 @@
+import CompanyModelSelect from '../components/CompanyModelSelect';
 import { enforceGreetingLanguage } from '../../shared/personaGreeting';
 import { PersonaControls, ControlSelect, SpeechAccuracySetting } from '../components/PersonaControls';
 import { DialectTeaching } from '../components/DialectTeaching';
@@ -4564,7 +4565,7 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
                   <span className="truncate">🎙️ {activePersona.name}</span>
                 </div>
                 <div className="relative min-w-0 flex-1 basis-48">
-                  <select
+                  <CompanyModelSelect
                     value={voiceLlmModel}
                     onChange={event => handleVoiceLlmChange(event.target.value)}
                     className="w-full min-w-0 bg-[#1c1d22] hover:bg-[#222329] border border-amber-400/25 text-amber-100 text-xs font-semibold rounded-lg px-2 py-0.5 outline-none cursor-pointer backdrop-blur-md transition-all"
@@ -4576,10 +4577,10 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
                         {`${index + 1}. ${isPro ? `${model.name} (${model.badge})` : model.simpleLabel}`}
                       </option>
                     ))}
-                  </select>
+                  </CompanyModelSelect>
                 </div>
                 <div className="relative min-w-0 flex-1 basis-48">
-                  <select
+                  <CompanyModelSelect
                     value={selectedVoiceEngine}
                     onChange={e => handleVoiceEngineChange(e.target.value)}
                     className="w-full min-w-0 bg-[#1c1d22] hover:bg-[#222329] border border-white/[0.12] text-zinc-200 text-xs font-semibold rounded-lg px-2 py-0.5 outline-none cursor-pointer backdrop-blur-md transition-all"
@@ -4591,7 +4592,7 @@ Return ONLY a JSON array of 3 reply strings (no markdown backticks, no wrapping 
                         {eng.id === 'fal_maya_stream' && recognitionLanguage(activePersona).scribe === 'ar' ? 'Maya — unavailable for Arabic' : `${eng.name} (${eng.badge})`}
                       </option>
                     ))}
-                  </select>
+                  </CompanyModelSelect>
                 </div>
                 <button
                   onClick={() => setShowVoiceAccuracyPanel(open => !open)}

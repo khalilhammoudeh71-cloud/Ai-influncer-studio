@@ -1,3 +1,4 @@
+import CompanyModelSelect from './CompanyModelSelect';
 import { ELEVENLABS_CALL_MODELS, elevenLabsCallModel } from '../../shared/elevenLabsCallModels';
 import { PronunciationSettings } from './PronunciationSettings';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -191,11 +192,11 @@ export function NativeVoiceCall({ openRequest=0,hideTrigger=false,initialPrefere
           {!active && <p className="text-sm text-zinc-400 mt-2">The provider receives your microphone audio and recognizes your words. Studio speech recheck does not apply. The transcript joins this chat.</p>}</div>
         <div className="min-h-0 overflow-y-auto overscroll-contain space-y-4 pr-1">
         {!active && <>
-        <label className="block text-sm text-zinc-300">Call provider<select aria-label="Call provider" value={provider} disabled={active} onChange={event => { setProvider(event.target.value as NativeProvider); rememberSetting(`native-call-provider_${personaId || 'super-agent'}`, event.target.value); setOptions(null); setError(''); setLabel(''); }} className={fieldClass}>
+        <label className="block text-sm text-zinc-300">Call provider<CompanyModelSelect aria-label="Call provider" value={provider} disabled={active} onChange={event => { setProvider(event.target.value as NativeProvider); rememberSetting(`native-call-provider_${personaId || 'super-agent'}`, event.target.value); setOptions(null); setError(''); setLabel(''); }} className={fieldClass}>
           <option value="elevenlabs">ElevenLabs · persona voice</option><option value="openai">OpenAI Realtime · provider voice</option><option value="hume">Hume EVI · provider voice</option>
-        </select></label>
+        </CompanyModelSelect></label>
         {provider === 'elevenlabs' ? <>
-          <label className="block text-sm text-zinc-300">Voice engine<select aria-label="Voice engine" value={speechModel} onChange={event=>{setSpeechModel(event.target.value);rememberSetting(`native-speech-model_${personaId||'super-agent'}`,event.target.value);}} className={fieldClass}>{ELEVENLABS_CALL_MODELS.map(m=><option key={m.id} value={m.id}>{m.name}</option>)}</select></label>
+          <label className="block text-sm text-zinc-300">Voice engine<CompanyModelSelect aria-label="Voice engine" value={speechModel} onChange={event=>{setSpeechModel(event.target.value);rememberSetting(`native-speech-model_${personaId||'super-agent'}`,event.target.value);}} className={fieldClass}>{ELEVENLABS_CALL_MODELS.map(m=><option key={m.id} value={m.id}>{m.name}</option>)}</CompanyModelSelect></label>
           <div className="rounded-xl border border-white/10 px-4 py-3 text-sm"><span className="text-zinc-400">Saved voice</span><p className="mt-1 font-medium">{loading ? 'Checking voice…' : options?.voiceName || 'Select an ElevenLabs voice in your persona’s Voice tab'}</p>{options?.voiceAccent && <p className="mt-1 text-xs text-zinc-400">{options.voiceAccent}</p>}</div>
         </> : provider === 'openai' ? <label className="block text-sm text-zinc-300">OpenAI voice<select aria-label="OpenAI voice" disabled={active} value={voice} onChange={event => { setVoice(event.target.value); rememberSetting(`native-voice:openai:${personaId || 'super-agent'}`, event.target.value); }} className={fieldClass}>{OPENAI_NATIVE_VOICES.map(value => <option key={value}>{value}</option>)}</select></label>
           : <p className="text-sm text-zinc-300">Hume voice: {options?.voiceName || (loading ? 'Checking voice…' : 'Setup required')}</p>}

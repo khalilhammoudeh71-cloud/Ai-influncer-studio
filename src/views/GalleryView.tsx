@@ -1,3 +1,4 @@
+import CompanyModelSelect from '../components/CompanyModelSelect';
 import { useState, useMemo, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Persona, GeneratedImage, NavActions } from '../types';
@@ -873,7 +874,7 @@ export default function GalleryView({ personas, activePersona, nav, onPersonasCh
               {/* Option 1: Upscaler Model */}
               <div className="flex flex-col gap-1.5">
                 <label className="text-[10px] uppercase tracking-wider font-extrabold text-[var(--text-tertiary)]">Upscaler Engine</label>
-                <select
+                <CompanyModelSelect
                   value={upscaleModelId}
                   onChange={e => setUpscaleModelId(e.target.value)}
                   disabled={isUpscaling}
@@ -883,7 +884,7 @@ export default function GalleryView({ personas, activePersona, nav, onPersonasCh
                   <option value="wavespeed-upscale:wavespeed-ai/ultimate-image-upscaler">Ultimate Image Upscaler (High Detail)</option>
                   <option value="wavespeed-upscale:clarity-ai/crystal-upscaler">Clarity Crystal (Crisp)</option>
                   <option value="wavespeed-upscale:wavespeed-ai/seedvr2/image">SeedVR2 Realism Upscaler</option>
-                </select>
+                </CompanyModelSelect>
               </div>
 
               {/* Option 2: Resolution (2K / 4K) */}

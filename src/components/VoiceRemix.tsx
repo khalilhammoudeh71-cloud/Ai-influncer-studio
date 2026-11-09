@@ -1,3 +1,4 @@
+import CompanyModelSelect from './CompanyModelSelect';
 import { useEffect, useRef, useState } from 'react';
 import { PronunciationMicrophone } from './PronunciationMicrophone';
 import { Wand2, Loader2 } from 'lucide-react';
@@ -103,7 +104,7 @@ export default function VoiceRemix({ voiceId: sourceVoiceId, voiceName, disabled
     <div className="mt-3 space-y-3">
       <p className="text-xs leading-relaxed text-zinc-400">{mode==='design'?'Describe the new character’s voice, accent, age and delivery.':'Describe changes to '+voiceName+'.'} Compare previews before saving. Generation uses ElevenLabs credits.</p>
       {mode==='design' && <div className="space-y-3">
-        <label className="block text-sm">Design model<select value={designModel} onChange={e=>setDesignModel(e.target.value as typeof designModel)} disabled={busy || !!pending} className="mt-1 w-full rounded-xl bg-[#151515] p-3"><option value="eleven_ttv_v3">Voice Design v3</option><option value="eleven_multilingual_ttv_v2">Voice Design v2</option></select></label>
+        <label className="block text-sm">Design model<CompanyModelSelect value={designModel} onChange={e=>setDesignModel(e.target.value as typeof designModel)} disabled={busy || !!pending} className="mt-1 w-full rounded-xl bg-[#151515] p-3"><option value="eleven_ttv_v3">Voice Design v3</option><option value="eleven_multilingual_ttv_v2">Voice Design v2</option></CompanyModelSelect></label>
         <label className="block text-sm">Prompt guidance · {guidanceScale}<input type="range" min="0" max="100" value={guidanceScale} disabled={busy || !!pending} onChange={e=>setGuidanceScale(Number(e.target.value))} className="w-full"/></label>
         <label className="block text-sm">Loudness · {loudness.toFixed(1)}<input type="range" min="-1" max="1" step="0.1" value={loudness} disabled={busy || !!pending} onChange={e=>setLoudness(Number(e.target.value))} className="w-full"/></label>
         <label className="flex gap-2 text-sm"><input type="checkbox" checked={enhance} disabled={busy || !!pending} onChange={e=>setEnhance(e.target.checked)}/>Enhance the description</label>

@@ -1,3 +1,4 @@
+import CompanyModelSelect from './CompanyModelSelect';
 import ExpressionControls from './ExpressionControls';
 import {withExpression,type ExpressionId,type ExpressionIntensity} from '../../shared/personaExpression';
 import { pickDefaultImageModel } from '../../shared/mediaDefaults';
@@ -958,7 +959,7 @@ const VisualGeneratorInner: React.FC<VisualGeneratorProps> = ({ persona, onClose
                       <div className="space-y-1">
                         <label className="text-[9px] font-bold text-[var(--text-muted)] uppercase tracking-wider block">Model A</label>
                         <div className="relative">
-                          <select
+                          <CompanyModelSelect
                             value={modelA}
                             onChange={(e) => setModelA(e.target.value)}
                             className="w-full bg-[#111827]/80 border border-[#334155]/60 focus:border-[#00D4FF] rounded-xl px-3 py-1.5 text-xs text-white outline-none appearance-none pr-8 cursor-pointer shadow-sm font-semibold animate-in fade-in"
@@ -972,15 +973,14 @@ const VisualGeneratorInner: React.FC<VisualGeneratorProps> = ({ persona, onClose
                                 ))}
                               </optgroup>
                             ))}
-                          </select>
-                          <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[#94A3B8] pointer-events-none" />
+                          </CompanyModelSelect>
                         </div>
                       </div>
 
                       <div className="space-y-1">
                         <label className="text-[9px] font-bold text-[var(--text-muted)] uppercase tracking-wider block">Model B (Comparison)</label>
                         <div className="relative">
-                          <select
+                          <CompanyModelSelect
                             value={modelB}
                             onChange={(e) => setModelB(e.target.value)}
                             className="w-full bg-[#111827]/80 border border-[#334155]/60 focus:border-[#00D4FF] rounded-xl px-3 py-1.5 text-xs text-white outline-none appearance-none pr-8 cursor-pointer shadow-sm font-semibold animate-in fade-in"
@@ -994,8 +994,7 @@ const VisualGeneratorInner: React.FC<VisualGeneratorProps> = ({ persona, onClose
                                 ))}
                               </optgroup>
                             ))}
-                          </select>
-                          <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[#94A3B8] pointer-events-none" />
+                          </CompanyModelSelect>
                         </div>
                       </div>
                     </div>
@@ -1018,7 +1017,7 @@ const VisualGeneratorInner: React.FC<VisualGeneratorProps> = ({ persona, onClose
                       </div>
                     ) : (
                       <div className="relative">
-                        <select
+                        <CompanyModelSelect
                           value={selectedModel}
                           onChange={(e) => {
                             setSelectedModel(e.target.value);
@@ -1035,8 +1034,7 @@ const VisualGeneratorInner: React.FC<VisualGeneratorProps> = ({ persona, onClose
                               ))}
                             </optgroup>
                           ))}
-                        </select>
-                        <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[#94A3B8] pointer-events-none" />
+                        </CompanyModelSelect>
                       </div>
                     )}
                   </div>
@@ -1048,7 +1046,7 @@ const VisualGeneratorInner: React.FC<VisualGeneratorProps> = ({ persona, onClose
                     <Video size={12} className="text-[#F2D58D]" /> Video AI Model
                   </label>
                   <div className="relative">
-                    <select
+                    <CompanyModelSelect
                       value={selectedVideoModel}
                       onChange={(e) => setSelectedVideoModel(e.target.value)}
                       className="w-full bg-[#111827]/80 border border-[#334155]/60 focus:border-[#00D4FF] rounded-xl px-3 py-1.5 text-xs text-white outline-none appearance-none pr-8 cursor-pointer shadow-sm transition-all font-semibold"
@@ -1056,8 +1054,7 @@ const VisualGeneratorInner: React.FC<VisualGeneratorProps> = ({ persona, onClose
                       {videoModels.map((m) => (
                         <option key={m.id} value={m.id}>{m.name}</option>
                       ))}
-                    </select>
-                    <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[#94A3B8] pointer-events-none" />
+                    </CompanyModelSelect>
                   </div>
                 </div>
               )
