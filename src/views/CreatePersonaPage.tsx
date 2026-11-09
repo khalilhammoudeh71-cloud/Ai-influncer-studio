@@ -1519,7 +1519,7 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
   };
 
   return (
-    <div ref={studioTopRef} className="relative min-w-0 text-[#F5F1E8] p-4 sm:p-6 lg:p-10 pb-20">
+    <div ref={studioTopRef} className="relative min-w-0 text-[#F5F1E8] p-4 sm:p-6 lg:p-10 pb-[calc(96px+env(safe-area-inset-bottom))] sm:pb-[calc(96px+env(safe-area-inset-bottom))] lg:pb-10">
       <div className="relative z-10 max-w-[1300px] mx-auto space-y-8">
 
         {/* ── HEADER BAR ── */}
