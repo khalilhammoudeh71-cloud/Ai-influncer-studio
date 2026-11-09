@@ -1,3 +1,5 @@
+import {VIDEO_UPLOAD_ACCEPT} from '../../shared/videoUploadPolicy';
+import {readVideoUpload,captureLastVideoFrame} from '../utils/videoUpload';
 import LatestVideoModels from '../components/LatestVideoModels';
 import VideoIconSelect from '../components/VideoIconSelect';
 import './VideoStudio.css';
@@ -406,11 +408,13 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
   // Asset Picker Modal State for CreateView
   const [isCreateAssetPickerOpen, setIsCreateAssetPickerOpen] = useState(false);
   const [createAssetPickerCallback, setCreateAssetPickerCallback] = useState<((url: string) => void) | null>(null);
+  const [createAssetPickerMediaType,setCreateAssetPickerMediaType]=useState<'image'|'video'|'all'>('all');
   const [createAssetPickerTitle, setCreateAssetPickerTitle] = useState('Select from Saved Asset Library');
 
-  const openCreateAssetPicker = (onSelect: (url: string) => void, title = 'Select from Saved Asset Library') => {
+  const openCreateAssetPicker = (onSelect: (url: string) => void, title = 'Select from Saved Asset Library',mediaType:'image'|'video'|'all'='all') => {
     setCreateAssetPickerCallback(() => onSelect);
     setCreateAssetPickerTitle(title);
+    setCreateAssetPickerMediaType(mediaType);
     setIsCreateAssetPickerOpen(true);
   };
 
@@ -501,6 +505,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
   const imageModelOptions=useMemo(()=>imageModelMenu(models),[models]);
   const [selectedVideoModel, setSelectedVideoModel] = useState('');
   const [selectedOutcome, setSelectedOutcome] = useState<CreationOutcome>('quality');
+  const [videoUploadBusy,setVideoUploadBusy]=useState(false);
   const [videoSubMode, setVideoSubMode] = useState<'generate' | 'edit' | 'extend'>('generate');
 
   useEffect(() => {
@@ -1331,12 +1336,13 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
 
     try {
       const effectiveRef = videoSourceVideo || videoSourceImage || (videoSourcePersonaId !== 'none' ? personas.find(p => p.id === videoSourcePersonaId)?.referenceImage : null);
-      const sourceImg = effectiveVideoSourceImage || videoSourceImage || effectiveRef || undefined;
+      const sourceImg = isV2V ? undefined : effectiveVideoSourceImage || videoSourceImage || effectiveRef || undefined;
       const sourceVid = videoSourceVideo || (effectiveRef?.startsWith('blob:') || effectiveRef?.startsWith('data:video') ? effectiveRef : undefined) || sourceImg;
 
       if (isI2V && !sourceImg && !effectiveRef) {
         throw new Error('Image-to-video models require a source image. Select a persona or upload an image.');
       }
+      if (videoSubMode==='edit' && !videoSourceVideo) throw new Error('Upload a video to edit.');
       if (isV2V && !sourceVid && !sourceImg && !effectiveRef) {
         throw new Error('Video-to-video/editing models require an uploaded source reference.');
       }
@@ -1368,18 +1374,21 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
   };
 
   const handleExtendVideo = async () => {
-    if (!videoResult?.videoUrl || !selectedVideoModel) return;
+    const extensionSource=videoSourceVideo||videoResult?.videoUrl;
+    if (!extensionSource || !selectedVideoModel) return;
     setIsExtending(true);
     setExtendError(null);
     setExtendResult(null);
     try {
-      const frameRes = await authFetch('/api/extract-last-frame', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ videoUrl: videoResult.videoUrl }),
-      });
-      const frameData = await frameRes.json();
-      if (!frameRes.ok) throw new Error(frameData.error || 'Could not extract last frame');
+      let frameDataUrl:string;
+      if(videoSourceVideo){
+        try{frameDataUrl=await captureLastVideoFrame(extensionSource)}catch(error){
+          if(/^(data:|blob:)/.test(extensionSource))throw error;
+          const response=await authFetch('/api/extract-last-frame',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({videoUrl:extensionSource})});const data=await response.json();if(!response.ok)throw new Error(data.error||'Could not read the final video frame');frameDataUrl=data.frameDataUrl;
+        }
+      }else{
+        const response=await authFetch('/api/extract-last-frame',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({videoUrl:extensionSource})});const data=await response.json();if(!response.ok)throw new Error(data.error||'Could not read the final video frame');frameDataUrl=data.frameDataUrl;
+      }
 
       const selectedVideoInfo = videoModels.find(m => m.id === selectedVideoModel);
       const supportsAspectRatio = selectedVideoInfo?.supportedProperties?.some(p => ['aspect_ratio', 'aspectRatio', 'ratio'].includes(p)) ?? false;
@@ -1389,7 +1398,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
       const data = await generateVideo(
         withExpression(videoPrompt,expression,expressionIntensity),
         selectedVideoModel,
-        frameData.frameDataUrl,
+        frameDataUrl,
         identityLock,
         naturalLook,
         supportsAspectRatio ? selectedVideoAspectRatio : undefined,
@@ -2271,6 +2280,13 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
 
     const effectiveVideoSource = videoSourceVideo || videoSourceImage || (videoSourcePersonaId !== 'none' ? (personas.find(p => p.id === videoSourcePersonaId)?.referenceImage ?? null) : null);
 
+    const uploadVideoReference:React.ChangeEventHandler<HTMLInputElement>=async event=>{
+      const file=event.target.files?.[0];if(!file)return;
+      if(videoSubMode==='generate'){handleFileUpload(setVideoSourceImage,setVideoSourceImageName)(event);setVideoSourceVideo(null);setVideoSourceVideoName(null);event.target.value='';return}
+      event.target.value='';setVideoUploadBusy(true);
+      try{const video=await readVideoUpload(file);setVideoSourceVideo(video);setVideoSourceVideoName(file.name);setVideoSourceImage(null);setVideoSourceImageName(null);setVideoSourcePersonaId('none');setGlobalError(null)}catch(error){setGlobalError(error instanceof Error?error.message:'Could not load the video.')}finally{setVideoUploadBusy(false)}
+    };
+
     return (
       <div className="video-studio-workspace flex flex-col gap-4 w-full max-w-5xl mx-auto pb-10">
 
@@ -2357,68 +2373,26 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
         </details>}
 
         <div className="video-prompt-composer">
-          <div className="video-mode-tabs">{([{id:'generate',label:'Generate Video'},{id:'edit',label:'Edit Video / V2V'},{id:'extend',label:'Extend Video'}] as const).map(tab=><button type="button" key={tab.id} aria-pressed={videoSubMode===tab.id} onClick={()=>setVideoSubMode(tab.id)}>{tab.label}</button>)}</div>
+          <div className="video-mode-tabs">{([{id:'generate',label:'Generate'},{id:'edit',label:'Edit'},{id:'extend',label:'Extend'}] as const).map(tab=><button type="button" key={tab.id} aria-pressed={videoSubMode===tab.id} disabled={videoUploadBusy} onClick={()=>{setVideoSubMode(tab.id);setVideoUploadMenuOpen(false);if(tab.id!=='generate'){setVideoSourceImage(null);setVideoSourceImageName(null);setVideoSourcePersonaId('none')}else{setVideoSourceVideo(null);setVideoSourceVideoName(null)}}}>{tab.label}</button>)}</div>
           <div className="video-prompt-body">
             <textarea id="video-scene-description" aria-label="Describe the scene" placeholder="Describe the scene" value={videoPrompt} onChange={e=>setVideoPrompt(e.target.value)}/>
-            {effectiveVideoSource&&<div className="video-reference-chip">{videoSourceVideo?<Film size={20}/>:<img src={effectiveVideoSource} alt="Video reference"/>}<span>{videoSourceVideoName||videoSourceImageName||(videoSourcePersonaId!=='none'?personas.find(p=>p.id===videoSourcePersonaId)?.name:'Reference')}</span><button type="button" aria-label="Remove video reference" title="Remove reference" onClick={()=>{setVideoSourcePersonaId('none');setVideoSourceImage(null);setVideoSourceImageName(null);setVideoSourceVideo(null);setVideoSourceVideoName(null);}}><X size={14}/></button></div>}
+            {effectiveVideoSource&&<div className="video-reference-chip">{videoSourceVideo?<video src={videoSourceVideo} muted playsInline preload="metadata" aria-label="Uploaded source video"/>:<img src={effectiveVideoSource} alt="Video reference"/>}<span>{videoSourceVideoName||videoSourceImageName||(videoSourcePersonaId!=='none'?personas.find(p=>p.id===videoSourcePersonaId)?.name:'Reference')}</span><button type="button" aria-label="Remove video reference" title="Remove reference" onClick={()=>{setVideoSourcePersonaId('none');setVideoSourceImage(null);setVideoSourceImageName(null);setVideoSourceVideo(null);setVideoSourceVideoName(null);}}><X size={14}/></button></div>}
           </div>
-            {/* Hidden iOS/iPad Inputs */}
-            <input
-              ref={videoImageLibraryInputRef}
-              type="file"
-              accept="image/*,video/*,video/mp4,video/quicktime,video/webm,video/x-matroska,.mp4,.mov,.webm,.mkv,.avi"
-              className="hidden"
-              onChange={e => {
-                handleFileUpload(setVideoSourceImage, setVideoSourceImageName)(e);
-                setVideoSourceVideo(null);
-                setVideoSourceVideoName(null);
-              }}
-            />
-            <input
-              ref={videoImageFilesInputRef}
-              type="file"
-              accept="image/*,video/*,video/mp4,video/quicktime,video/webm,video/x-matroska,.mp4,.mov,.webm,.mkv,.avi"
-              className="hidden"
-              onChange={e => {
-                handleFileUpload(setVideoSourceImage, setVideoSourceImageName)(e);
-                setVideoSourceVideo(null);
-                setVideoSourceVideoName(null);
-              }}
-            />
-            <input
-              ref={videoVideoLibraryInputRef}
-              type="file"
-              accept="video/*,video/mp4,video/quicktime,video/webm,video/x-matroska,video/x-msvideo,image/*,.mp4,.mov,.webm,.mkv,.avi,.m4v,.3gp"
-              className="hidden"
-              onChange={e => {
-                handleFileUpload(setVideoSourceVideo, setVideoSourceVideoName)(e);
-                setVideoSourceImage(null);
-                setVideoSourceImageName(null);
-              }}
-            />
-            <input
-              ref={videoVideoFilesInputRef}
-              type="file"
-              accept="video/*,video/mp4,video/quicktime,video/webm,video/x-matroska,video/x-msvideo,image/*,.mp4,.mov,.webm,.mkv,.avi,.m4v,.3gp"
-              className="hidden"
-              onChange={e => {
-                handleFileUpload(setVideoSourceVideo, setVideoSourceVideoName)(e);
-                setVideoSourceImage(null);
-                setVideoSourceImageName(null);
-              }}
-            />
-
-
+            <input ref={videoImageLibraryInputRef} type="file" accept={videoSubMode==='generate'?'image/*,video/*':VIDEO_UPLOAD_ACCEPT} hidden onChange={uploadVideoReference}/>
+            <input ref={videoImageFilesInputRef} type="file" accept={videoSubMode==='generate'?'image/*,video/*':VIDEO_UPLOAD_ACCEPT} hidden onChange={uploadVideoReference}/>
+            <input ref={videoVideoLibraryInputRef} type="file" accept={VIDEO_UPLOAD_ACCEPT} hidden onChange={uploadVideoReference}/>
+            <input ref={videoVideoFilesInputRef} type="file" accept={VIDEO_UPLOAD_ACCEPT} hidden onChange={uploadVideoReference}/>
           <div className="video-prompt-toolbar"><div className="video-prompt-icons">
             <div className="video-upload-control relative shrink-0">
               <button
                 type="button"
-                aria-label="Add a video or image reference"
-                title="Add a video or image reference"
+                aria-label={videoSubMode==='generate'?'Add a video or image reference':'Upload a video'}
+                title={videoSubMode==='generate'?'Add a video or image reference':'Upload a video'}
+                disabled={videoUploadBusy}
                 onClick={() => setVideoUploadMenuOpen(!videoUploadMenuOpen)}
                 className="w-10 h-10 rounded-2xl bg-white/[0.04] border border-white/10 flex items-center justify-center text-slate-350 hover:bg-white/10 hover:text-white transition-all shadow-md"
               >
-                <Plus size={18} />
+                {videoUploadBusy?<Loader2 size={18} className="animate-spin"/>:<Plus size={18}/>}
               </button>
 
               {videoUploadMenuOpen && (
@@ -2430,10 +2404,8 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
                       onClick={() => {
                         setVideoUploadMenuOpen(false);
                         openCreateAssetPicker((url) => {
-                          setVideoSourceImage(url);
-                          setVideoSourceImageName('Selected from Saved Library');
-                          setVideoSourceVideo(null);
-                        }, 'Select Asset from Saved Library');
+                          if(videoSubMode==='generate'){setVideoSourceImage(url);setVideoSourceImageName('Selected from Saved Library');setVideoSourceVideo(null)}else{setVideoSourceVideo(url);setVideoSourceVideoName('Selected from Video Library');setVideoSourceImage(null);setVideoSourceImageName(null);setVideoSourcePersonaId('none')}
+                        }, videoSubMode==='generate'?'Select an image':'Select a video',videoSubMode==='generate'?'image':'video');
                       }}
                       className="w-full text-left px-2.5 py-2 rounded-lg text-xs text-pink-400 bg-pink-500/10 hover:bg-pink-500/20 flex items-center gap-2 font-bold transition-all border border-pink-500/20 mb-1"
                     >
@@ -2441,6 +2413,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
                       Choose from Saved Library
                     </button>
 
+                    {videoSubMode==='generate'&&<>
                     {/* Image Group */}
                     <div className="px-2.5 py-1 text-xs font-black text-slate-500 uppercase tracking-widest border-b border-white/5">
                       Upload Image
@@ -2468,6 +2441,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
                       Browse Files
                     </button>
 
+                    </>}
                     {/* Video Group */}
                     <div className="px-2.5 py-1 pt-1.5 text-xs font-black text-slate-500 uppercase tracking-widest border-b border-white/5">
                       Upload Video
@@ -2500,7 +2474,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
             </div>
 
 
-            <VideoIconSelect label="Persona reference" value={videoSourcePersonaId} options={[{value:'none',label:'No persona reference'},...personas.map(p=>({value:p.id,label:p.name}))]} onChange={id=>{setVideoSourcePersonaId(id);setVideoSourceImage(null);setVideoSourceImageName(null);setVideoSourceVideo(null);setVideoSourceVideoName(null);}} icon={<UserRound size={17}/>}/>
+            {videoSubMode==='generate'&&<VideoIconSelect label="Persona reference" value={videoSourcePersonaId} options={[{value:'none',label:'No persona reference'},...personas.map(p=>({value:p.id,label:p.name}))]} onChange={id=>{setVideoSourcePersonaId(id);setVideoSourceImage(null);setVideoSourceImageName(null);setVideoSourceVideo(null);setVideoSourceVideoName(null);}} icon={<UserRound size={17}/>}/>}
                 <CompanyModelSelect iconOnly triggerIcon={<Cpu size={17}/>} title={`Video model: ${selectedVideoInfo?.name || 'Choose a model'}${videoCostHint}`}
                   value={selectedVideoModel}
                   data-video-model-select
@@ -2566,10 +2540,10 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
             <button
               onClick={videoSubMode === 'extend' ? handleExtendVideo : handleVideoGenerate}
               disabled={
-                isGenerating || isExtending || !selectedVideoModel || !videoPrompt.trim() ||
-                (videoSubMode === 'extend' && !videoResult?.videoUrl) ||
+                isGenerating || isExtending || videoUploadBusy || !selectedVideoModel || !videoPrompt.trim() ||
+                (videoSubMode === 'extend' && !videoSourceVideo && !videoResult?.videoUrl) ||
                 (videoSubMode === 'generate' && isI2V && !effectiveVideoSource) ||
-                (videoSubMode === 'edit' && !effectiveVideoSource)
+                (videoSubMode === 'edit' && !videoSourceVideo)
               }
               className="video-generate-icon btn-gold-primary"
               aria-label={videoSubMode==='extend'?'Extend Video':videoSubMode==='edit'?'Edit Video':'Generate Video'}
@@ -3990,6 +3964,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
           if (createAssetPickerCallback) createAssetPickerCallback(url);
         }}
         title={createAssetPickerTitle}
+        acceptMediaType={createAssetPickerMediaType}
         currentPersona={persona}
       />
     </div>
