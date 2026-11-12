@@ -1905,9 +1905,6 @@ export default function CreatePersonaPage({ personas, setPersonas, onSelectPerso
             </div>
           )}
 
-          <div className="rounded-xl border border-white/10 bg-white/[0.025] p-3 text-xs leading-relaxed text-slate-300">
-            {referenceImages.filter(image=>identityDetails[image]?.approved).length} approved identity photos. One clear photo is enough to create your persona. Optional extra photos can help with difficult angles and full-body shots. Choose a sharp photo with one person and visible facial features; strong filters can hide identity details. The studio checks new approvals for photo quality and identity consistency; these visual checks can make mistakes.
-          </div>
           {/* Photo Gallery Grid */}
           {referenceImages.length > 0 && (
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3 pt-2">
