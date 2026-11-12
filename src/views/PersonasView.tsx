@@ -171,7 +171,7 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
                   </div>
                   
                   {/* Primary actions stay visible; destructive actions live in the overflow menu. */}
-                  <div className="flex items-center gap-2 w-full">
+                  <div className="flex flex-wrap items-center gap-2 w-full">
                     {/* Chat Button */}
                     <button
                       type="button"
@@ -180,7 +180,7 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
                         onSelectPersona(p.id);
                         nav.push({ view: 'assistant' });
                       }}
-                      className="flex-1 min-h-11 rounded-lg bg-white/[.035] hover:bg-white/[.07] border border-white/15 text-[#F5F1E8] text-xs font-medium flex items-center justify-center gap-1.5 transition-colors"
+                      className="flex-1 basis-14 min-h-11 rounded-lg bg-white/[.035] hover:bg-white/[.07] border border-white/15 text-[#F5F1E8] text-xs font-medium flex items-center justify-center gap-1.5 transition-colors"
                       title="Chat with AI Persona"
                     >
                       <MessageSquare size={14} />
@@ -194,11 +194,25 @@ export default function PersonasView({ personas, setPersonas, onSelectPersona, s
                         e.stopPropagation();
                         handleEditPersona(p);
                       }}
-                      className="flex-1 min-h-11 rounded-lg hover:bg-white/[.05] border border-white/15 text-[#F5F1E8] text-xs font-medium flex items-center justify-center gap-1.5 transition-colors"
+                      className="flex-1 basis-14 min-h-11 rounded-lg hover:bg-white/[.05] border border-white/15 text-[#F5F1E8] text-xs font-medium flex items-center justify-center gap-1.5 transition-colors"
                       title="Edit Persona Settings"
                     >
                       <Pencil size={14} className="text-slate-300" />
                       <span>Edit</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onSelectPersona(p.id);
+                        nav.push({ view: 'create' });
+                      }}
+                      className="flex-1 basis-20 min-h-11 rounded-lg bg-white/[.035] hover:bg-white/[.07] border border-white/15 text-[#F5F1E8] text-xs font-medium flex items-center justify-center gap-1.5 transition-colors"
+                      aria-label={`Generate with ${p.name || 'this persona'}`}
+                    >
+                      <Sparkles size={14} aria-hidden="true" />
+                      <span>Generate</span>
                     </button>
                   </div>
                 </div>
