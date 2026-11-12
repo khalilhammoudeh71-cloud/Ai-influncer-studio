@@ -1,3 +1,4 @@
+import AvatarVoiceClone from '../components/AvatarVoiceClone';
 import {VIDEO_UPLOAD_ACCEPT} from '../../shared/videoUploadPolicy';
 import {readVideoUpload,captureLastVideoFrame} from '../utils/videoUpload';
 import LatestVideoModels from '../components/LatestVideoModels';
@@ -711,7 +712,7 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
   useEffect(() => {
     fetchElevenLabsVoices().then(elVoices => {
       if (elVoices.length > 0) {
-        setAllVoices([...TTS_VOICES, ...elVoices]);
+        setAllVoices(current => [...current, ...elVoices.filter(voice => !current.some(item => item.id === voice.id))]);
       }
     });
   }, []);
@@ -2879,8 +2880,17 @@ export default function CreateView({ persona, personas, setPersonas, onSelectPer
                     if (voice) void handleVoicePreview(event, voice);
                   }}>{playingPreviewId === selectedAvatarVoice ? 'Stop preview' : 'Preview voice'}</button>
                 </div>
+
               </>
             )}
+            <div hidden={audioMode}>
+                <AvatarVoiceClone onReady={voice => {
+                  setAllVoices(current => current.some(item => item.id === voice.id) ? current : [
+                    ...current, { ...voice, engine: 'elevenlabs', gender: '', desc: 'Cloned voice' },
+                  ]);
+                  setSelectedAvatarVoice(voice.id);
+                }} />
+            </div>
           </section>
 
           <details className={panel} open={needsVideo || undefined}>
