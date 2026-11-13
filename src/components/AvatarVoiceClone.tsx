@@ -1,3 +1,4 @@
+import { Upload } from 'lucide-react';
 import { useRef, useState, type FormEvent } from 'react';
 import type { CloneResult } from '../../shared/personaVoiceLifecycle';
 import { api } from '../services/apiService';
@@ -13,6 +14,7 @@ export default function AvatarVoiceClone({ onReady }: {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const pending = useRef(false);
+  const sampleInput = useRef<HTMLInputElement>(null);
 
   async function run(action: 'clone' | 'check' | 'retry') {
     if (pending.current || (action === 'check' ? !result : !sample || !name.trim() || !authorized)) return;
@@ -47,8 +49,14 @@ export default function AvatarVoiceClone({ onReady }: {
             <input required maxLength={80} value={name} onChange={event => setName(event.target.value)}
               className="mt-1 w-full rounded-lg border border-white/15 bg-black/20 p-2" />
           </label>
-          <label className="block">Voice sample
-            <input type="file" accept="audio/*,video/*,.mp3,.wav,.m4a,.mp4,.mov" className="mt-1 block w-full"
+          <div className="space-y-2">
+            <p>Voice sample</p>
+            <button type="button" onClick={() => sampleInput.current?.click()}
+              className="btn-gold-primary flex min-h-11 w-full items-center justify-center gap-2 px-3 py-2">
+              <Upload size={16} aria-hidden="true" />
+              {sample ? "Replace audio or video" : "Upload audio or video"}
+            </button>
+            <input ref={sampleInput} type="file" hidden accept="audio/*,video/*,.mp3,.wav,.m4a,.mp4,.mov,.webm"
               onChange={async event => {
                 const file = event.currentTarget.files?.[0];
                 if (!file || pending.current) return;
@@ -66,7 +74,8 @@ export default function AvatarVoiceClone({ onReady }: {
                   setBusy(false);
                 }
               }} />
-          </label>
+            <p className="text-xs text-[var(--text-secondary)]">For video, the studio uses the audio track.</p>
+          </div>
           {sample && <p className="break-words">{sample.name}</p>}
           <label className="flex items-start gap-2">
             <input type="checkbox" checked={authorized} onChange={event => setAuthorized(event.target.checked)} />
