@@ -1077,36 +1077,43 @@ export default function VoiceView({ persona, personas, onSelectPersona, nav, bil
               className="flex-1 w-full min-h-[160px] bg-[var(--bg-input)] border border-[var(--border-subtle)] rounded-2xl p-4 text-[var(--text-primary)] text-sm focus:outline-none focus:border-[var(--border-accent)] resize-none font-sans leading-relaxed"
             />
             
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 pt-4 border-t border-[var(--border-subtle)]">
+            <div className="flex flex-wrap gap-2 border-t border-[var(--border-subtle)] pt-3">
               <button
+                type="button"
                 onClick={() => handleGenerateScript('generate')}
-                disabled={isGeneratingScript || !topic}
-                className="py-3 bg-[var(--accent-primary-soft)] hover:bg-[var(--accent-primary)]/20 text-[var(--accent-primary)] text-[10px] font-bold rounded-xl border border-[var(--border-accent)] transition-all flex flex-col items-center justify-center gap-1 disabled:opacity-40"
+                disabled={isGeneratingScript || !topic.trim()}
+                aria-describedby="voice-script-actions-help"
+                className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-[var(--border-accent)] px-3 py-1.5 text-xs font-semibold text-[var(--accent-primary)] hover:bg-white/10 disabled:border-white/15 disabled:text-[var(--text-secondary)]"
               >
-                {isGeneratingScript ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
-                <span>Auto Generate</span>
+                <Sparkles size={14} aria-hidden="true" />
+                Auto Generate
               </button>
-              
               <button
+                type="button"
                 onClick={() => handleGenerateScript('enhance')}
-                disabled={isGeneratingScript || !script}
-                className="py-3 bg-[var(--accent-primary)]/10 hover:bg-[var(--accent-primary)]/20 text-[var(--accent-primary)] text-[10px] font-bold rounded-xl border border-[var(--accent-primary)]/25 transition-all flex flex-col items-center justify-center gap-1 disabled:opacity-40"
+                disabled={isGeneratingScript || !script.trim()}
+                aria-describedby="voice-script-actions-help"
+                className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-[var(--border-accent)] px-3 py-1.5 text-xs font-semibold text-[var(--accent-primary)] hover:bg-white/10 disabled:border-white/15 disabled:text-[var(--text-secondary)]"
               >
-                {isGeneratingScript ? <Loader2 className="w-4 h-4 animate-spin" /> : <Mic className="w-4 h-4" />}
-                <span>Enhance Script</span>
+                <Mic size={14} aria-hidden="true" />
+                Enhance Script
               </button>
-
-
-
               <button
+                type="button"
                 onClick={() => handleGenerateScript('surprise')}
                 disabled={isGeneratingScript}
-                className="py-3 bg-[var(--accent-rose)]/10 hover:bg-[var(--accent-rose)]/20 text-[var(--accent-rose)] text-[10px] font-bold rounded-xl border border-[var(--accent-rose)]/25 transition-all flex flex-col items-center justify-center gap-1 disabled:opacity-40"
+                className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-white/25 px-3 py-1.5 text-xs font-semibold text-white hover:bg-white/10 disabled:opacity-50"
               >
-                {isGeneratingScript ? <Loader2 className="w-4 h-4 animate-spin" /> : <Zap className="w-4 h-4" />}
-                <span>Surprise Me</span>
+                <Zap size={14} aria-hidden="true" />
+                Surprise Me
               </button>
             </div>
+            <p id="voice-script-actions-help" className="text-xs text-[var(--text-secondary)]" aria-live="polite">
+              {isGeneratingScript ? 'Working on your script…' : [
+                !topic.trim() && 'Add a topic to auto-generate.',
+                !script.trim() && 'Write or paste a script to enhance it.',
+              ].filter(Boolean).join(' ')}
+            </p>
           </div>
         </div>
 
