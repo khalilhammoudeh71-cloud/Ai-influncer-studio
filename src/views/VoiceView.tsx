@@ -1112,58 +1112,11 @@ export default function VoiceView({ persona, personas, onSelectPersona, nav, bil
         {studioStage === 'write' && <div className="lg:col-span-12"><button type="button" onClick={() => setStudioStage('voice')} className="btn-gold-primary px-5 py-2.5 text-sm">Choose a voice</button></div>}
         {/* Right Column: Control Panel (5/12) */}
         <div hidden={studioStage !== 'voice'} className="lg:col-span-12 space-y-6">
-          <div className="glass-card rounded-2xl p-6 space-y-6 h-full">
-            <h3 className="text-lg font-bold text-[var(--text-primary)] flex items-center gap-2">
-              <Settings2 className="w-5 h-5 text-[var(--accent-primary)]" />
-              Choose voice and delivery
-            </h3>
-
-            {persona && persona.id !== 'empty' && <SavedPersonaVoices voices={persona.savedVoices || []} current={persona} onSelect={handleRestoreSavedVoice} disabled={isSavingDefaultVoice || isCloning} actionLabel="Use as default" />}
-
-            {/* Voice Selection — Engine-specific */}
+          <section className="glass-card mx-auto max-w-2xl space-y-4 rounded-2xl p-4 sm:p-6" aria-labelledby="choose-voice-heading">
+            <h2 id="choose-voice-heading" className="text-xl font-bold">Choose a voice</h2>
             <div className="space-y-3">
-              <label className="text-xs font-bold text-[var(--text-muted)] uppercase tracking-widest flex items-center gap-2">
-                Voice Actor
-                {voiceEngine === 'elevenlabs' && (
-                  <span className="text-[8px] px-1.5 py-0.5 rounded bg-gradient-to-r from-[#8D7040]/20 to-[#E7C477]/20 text-[#E7C477] font-bold">
-                    ELEVENLABS
-                  </span>
-                )}
-              </label>
-
               {voiceEngine === 'elevenlabs' ? (
                 <>
-                  {/* Clone a voice Toggle & Save Default */}
-                  <div className="flex flex-wrap items-center gap-2 mb-2">
-                    <button
-                      onClick={() => setShowClonePanel(!showClonePanel)}
-                      aria-expanded={showClonePanel}
-                      aria-controls="voice-cloning-form"
-                      className="flex-1 py-2 px-3 bg-[#E7C477]/10 hover:bg-[#E7C477]/20 text-[#E7C477] border border-[#E7C477]/30 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer"
-                    >
-                      <Crown size={12} />
-                      {showClonePanel ? 'Close cloning' : 'Clone a voice'}
-                    </button>
-                    <button
-                      onClick={() => cloningAudioFilesInputRef.current?.click()}
-                      className="py-2 px-3 bg-[var(--accent-primary)]/20 hover:bg-[var(--accent-primary)]/30 text-[var(--accent-primary)] border border-[var(--accent-primary)]/40 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-sm"
-                      title="Upload MP3, MP4, MOV, WAV, M4A voice or video file"
-                    >
-                      <Upload size={12} />
-                      Upload Voice File
-                    </button>
-                    {selectedELVoiceId && (
-                      <button
-                        onClick={handleSaveDefaultVoice}
-                        disabled={isSavingDefaultVoice || isCloning}
-                        className="py-2 px-3 bg-white/5 hover:bg-white/10 text-white border border-white/10 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer"
-                      >
-                        <Check size={12} className="text-emerald-400" />
-                        Set Default
-                      </button>
-                    )}
-                  </div>
-
                   {/* Clone a voice Panel */}
                   {showClonePanel && (
                     <section id="voice-cloning-form" aria-label="Clone a voice" className="p-4 rounded-2xl bg-gradient-to-b from-[#E7C477]/5 to-black/20 border border-[#E7C477]/20 space-y-4 shadow-xl mb-4">
@@ -1383,6 +1336,7 @@ export default function VoiceView({ persona, personas, onSelectPersona, nav, bil
                       <div className="flex gap-2">
                         <div className="relative flex-1">
                           <select
+                            aria-label="Voice"
                             value={selectedELVoiceId}
                             onChange={(e) => setSelectedELVoiceId(e.target.value)}
                             className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-xs font-bold text-[var(--text-primary)] hover:border-[var(--accent-primary)]/30 focus:border-[var(--accent-primary)]/50 outline-none transition-all cursor-pointer appearance-none pr-8"
@@ -1400,6 +1354,7 @@ export default function VoiceView({ persona, personas, onSelectPersona, nav, bil
                         </div>
                         {selectedELVoiceId && (
                           <button
+                            aria-label="Preview voice"
                             onClick={() => handleVoicePreview(selectedELVoiceId)}
                             className={cn(
                               "w-11 h-11 rounded-xl flex items-center justify-center transition-all border border-white/10 shrink-0",
@@ -1415,9 +1370,19 @@ export default function VoiceView({ persona, personas, onSelectPersona, nav, bil
                     )}
                   </div>
 
-                  {/* Voice Settings */}
-                  <VoiceSettingsPanel />
-                  <ElevenLabsVoiceTools key={persona?.id || 'studio'} voiceId={selectedELVoiceId} voiceName={persona?.name || 'Character'} dictionaries={dictionaries} onDictionaries={setDictionaries} onSelect={async voice=>{setSelectedELVoiceId(voice.voiceId);setVoiceEngine('elevenlabs');await fetchVoices();}}/>
+                  <div className="flex flex-wrap gap-2">
+                    <button type="button" aria-expanded={showClonePanel} aria-controls={showClonePanel ? 'voice-cloning-form' : undefined}
+                      onClick={() => setShowClonePanel(!showClonePanel)}
+                      className="min-h-10 rounded-lg border border-white/15 px-3 text-sm hover:bg-white/5">
+                      {showClonePanel ? 'Close cloning' : 'Clone a voice'}
+                    </button>
+                    {selectedELVoiceId && persona.id !== 'empty' && (
+                      <button type="button" onClick={handleSaveDefaultVoice} disabled={isSavingDefaultVoice || isCloning}
+                        className="min-h-10 rounded-lg border border-white/15 px-3 text-sm hover:bg-white/5 disabled:opacity-50">
+                        Save as persona default
+                      </button>
+                    )}
+                  </div>
                 </>
               ) : (
                 <div className="space-y-4">
@@ -1425,6 +1390,7 @@ export default function VoiceView({ persona, personas, onSelectPersona, nav, bil
                   <div className="flex gap-2">
                     <div className="relative flex-1">
                       <select
+                        aria-label="Voice"
                         value={selectedVoice}
                         onChange={(e) => setSelectedVoice(e.target.value)}
                         className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-xs font-bold text-[var(--text-primary)] hover:border-[var(--accent-primary)]/30 focus:border-[var(--accent-primary)]/50 outline-none transition-all cursor-pointer appearance-none pr-8"
@@ -1440,6 +1406,12 @@ export default function VoiceView({ persona, personas, onSelectPersona, nav, bil
                       </div>
                     </div>
 
+                    {selectedVoice && selectedVoice !== 'persona-clone' && (
+                      <button type="button" onClick={() => handleVoicePreview(selectedVoice)}
+                        className="min-h-11 shrink-0 rounded-lg border border-white/15 px-3 text-sm hover:bg-white/5">
+                        {previewingVoice === selectedVoice ? 'Loading…' : 'Preview voice'}
+                      </button>
+                    )}
                   </div>
 
                   {/* Custom Reference Voice Upload for OmniVoice 'persona-clone' */}
@@ -1529,47 +1501,42 @@ export default function VoiceView({ persona, personas, onSelectPersona, nav, bil
               )}
             </div>
 
-            {/* Performance Mood */}
-            <div className="space-y-3">
-              <label className="text-xs font-bold text-[var(--text-muted)] uppercase tracking-widest block">Performance Mood</label>
-              <div className="grid grid-cols-4 gap-2">
-                {EMOTIONS.map(e => {
-                  const Icon = e.icon;
-                  return (
-                    <button
-                      key={e.id}
-                      onClick={() => setSelectedEmotion(e.id)}
-                      className={cn(
-                        "aspect-square rounded-xl flex flex-col items-center justify-center gap-1.5 transition-all border",
-                        selectedEmotion === e.id 
-                          ? "bg-[var(--accent-primary)] text-white border-[var(--accent-primary)] shadow-lg shadow-[var(--accent-primary)]/20" 
-                          : "bg-[var(--bg-elevated)] border-[var(--border-default)] text-[var(--text-muted)] hover:text-[var(--text-primary)]"
-                      )}
-                    >
-                      <Icon className="w-5 h-5" />
-                      <span className="text-[9px] font-bold uppercase truncate w-full text-center px-1">{e.name}</span>
-                    </button>
-                  );
-                })}
+            {persona.id !== 'empty' && !!persona.savedVoices?.length && (
+              <details className="rounded-xl border border-white/10 p-3">
+                <summary className="cursor-pointer text-sm font-semibold">Saved persona voices</summary>
+                <div className="mt-3">
+                  <SavedPersonaVoices voices={persona.savedVoices} current={persona} onSelect={handleRestoreSavedVoice}
+                    disabled={isSavingDefaultVoice || isCloning} actionLabel="Use as default" />
+                </div>
+              </details>
+            )}
+            <details className="rounded-xl border border-white/10 p-3">
+              <summary className="cursor-pointer text-sm font-semibold">Delivery settings</summary>
+              <div className="mt-3 space-y-4">
+                <label className="block space-y-1 text-sm">
+                  <span>Mood</span>
+                  <select value={selectedEmotion ?? "neutral"} onChange={event => setSelectedEmotion(event.target.value)}
+                    className="premium-input block w-full px-3 py-2">
+                    {EMOTIONS.map(emotion => <option key={emotion.id} value={emotion.id}>{emotion.name}</option>)}
+                  </select>
+                </label>
+                {voiceEngine === 'elevenlabs' && (
+                  <>
+                  <VoiceSettingsPanel />
+                  <ElevenLabsVoiceTools key={persona?.id || 'studio'} voiceId={selectedELVoiceId} voiceName={persona?.name || 'Character'} dictionaries={dictionaries} onDictionaries={setDictionaries} onSelect={async voice=>{setSelectedELVoiceId(voice.voiceId);setVoiceEngine('elevenlabs');await fetchVoices();}}/>
+                  </>
+                )}
               </div>
-            </div>
-
-            <p className="text-xs text-[var(--text-muted)]">Delivery uses controls supported by the selected provider. Emotion adjusts your saved settings gently; no fillers are added to your script.</p>
-
+            </details>
             {!script.trim() && <p className="text-xs text-[var(--text-muted)]">Add a script before rendering audio.</p>}
             {voiceEngine === 'elevenlabs' && !selectedELVoiceId && <p className="text-xs text-[var(--text-muted)]">Choose a voice to render audio.</p>}
-            <button
-              onClick={handleGenerateVoice}
-              disabled={isGeneratingVoice || !script || (voiceEngine === 'elevenlabs' && !selectedELVoiceId)}
-              className="w-full py-5 premium-button disabled:opacity-40 font-black text-lg uppercase tracking-[0.2em] mt-6 flex items-center justify-center gap-4 transition-all"
-            >
-              {isGeneratingVoice ? <Loader2 className="w-6 h-6 animate-spin" /> : <Volume2 className="w-6 h-6" />}
-              Render Audio
-              {voiceEngine === 'elevenlabs' && (
-                <Crown className="w-4 h-4 text-amber-300" />
-              )}
+            <button type="button" onClick={handleGenerateVoice}
+              disabled={isGeneratingVoice || !script.trim() || (voiceEngine === 'elevenlabs' && !selectedELVoiceId)}
+              className="btn-gold-primary flex min-h-11 w-full items-center justify-center gap-2 px-4 text-sm disabled:opacity-50 sm:w-auto">
+              {isGeneratingVoice ? <Loader2 size={17} className="animate-spin" /> : <Volume2 size={17} />}
+              {isGeneratingVoice ? 'Generating audio…' : 'Generate audio'}
             </button>
-          </div>
+          </section>
         </div>
       </div>
 
