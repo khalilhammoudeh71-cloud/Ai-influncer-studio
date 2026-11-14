@@ -1082,7 +1082,6 @@ export default function VoiceView({ persona, personas, onSelectPersona, nav, bil
                 type="button"
                 onClick={() => handleGenerateScript('generate')}
                 disabled={isGeneratingScript || !topic.trim()}
-                aria-describedby="voice-script-actions-help"
                 className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-[var(--border-accent)] px-3 py-1.5 text-xs font-semibold text-[var(--accent-primary)] hover:bg-white/10 disabled:border-white/15 disabled:text-[var(--text-secondary)]"
               >
                 <Sparkles size={14} aria-hidden="true" />
@@ -1092,7 +1091,6 @@ export default function VoiceView({ persona, personas, onSelectPersona, nav, bil
                 type="button"
                 onClick={() => handleGenerateScript('enhance')}
                 disabled={isGeneratingScript || !script.trim()}
-                aria-describedby="voice-script-actions-help"
                 className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-[var(--border-accent)] px-3 py-1.5 text-xs font-semibold text-[var(--accent-primary)] hover:bg-white/10 disabled:border-white/15 disabled:text-[var(--text-secondary)]"
               >
                 <Mic size={14} aria-hidden="true" />
@@ -1108,12 +1106,6 @@ export default function VoiceView({ persona, personas, onSelectPersona, nav, bil
                 Surprise Me
               </button>
             </div>
-            <p id="voice-script-actions-help" className="text-xs text-[var(--text-secondary)]" aria-live="polite">
-              {isGeneratingScript ? 'Working on your script…' : [
-                !topic.trim() && 'Add a topic to auto-generate.',
-                !script.trim() && 'Write or paste a script to enhance it.',
-              ].filter(Boolean).join(' ')}
-            </p>
           </div>
         </div>
 
