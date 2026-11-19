@@ -1,6 +1,6 @@
 import React, {useState} from 'react';
 import {authFetch} from '../services/imageService';
-export type PlanApproval = {budgetCredits:number;visualReview:boolean};
+export type PlanApproval = {budgetCredits:number;visualReview:boolean;firstShotReview?:boolean};
 export function AgentPlanApproval({steps,onApprove}:{steps:any[];onApprove:(approval:PlanApproval)=>void}){
  const [quote,setQuote]=useState<any>(null);
  const [quotedPlan,setQuotedPlan]=useState('');
@@ -10,6 +10,7 @@ export function AgentPlanApproval({steps,onApprove}:{steps:any[];onApprove:(appr
  const fingerprint=JSON.stringify(steps);
  const current=quotedPlan===fingerprint?quote:null;
  const allowance=Number(limit);
+ const firstShotCredits = current?.steps[0] ? current.steps[0].credits - (current.providerChargesApply ? 0 : current.steps[0].reviewCredits) : 0;
  const valid=Number.isSafeInteger(allowance)&&allowance>=1&&allowance<=100000;
  async function estimate(){
   setBusy(true);setError('');
@@ -37,5 +38,11 @@ export function AgentPlanApproval({steps,onApprove}:{steps:any[];onApprove:(appr
   </>}
   {error&&<p role="alert" className="text-xs text-amber-200">{error}. No generation was started.</p>}
   {!current?<button type="button" disabled={busy} onClick={()=>void estimate()} className="min-h-11 w-full rounded-lg bg-[#E7C477] px-4 py-2 text-sm text-black disabled:opacity-50">{busy?'Checking cost…':'Review cost & allowance'}</button>:<button type="button" disabled={!valid||current.insufficientCredits} onClick={()=>onApprove({budgetCredits:allowance,visualReview:true})} className="min-h-11 w-full rounded-lg bg-[#E7C477] px-4 py-2 text-sm text-black disabled:opacity-50">Approve &amp; run plan</button>}
+  {current && steps.length > 1 && <div className="space-y-1">
+   <button type="button" disabled={!valid || firstShotCredits > current.balance} onClick={() => onApprove({budgetCredits:allowance,visualReview:true,firstShotReview:true})} className="min-h-11 w-full rounded-lg border border-[#E7C477]/50 px-4 py-2 text-sm text-[#E7C477] disabled:opacity-50">
+    Generate first shot and pause
+   </button>
+   <p className="text-xs text-zinc-400">Review the first result and approve it before the remaining steps start.</p>
+  </div>}
  </div>;
 }

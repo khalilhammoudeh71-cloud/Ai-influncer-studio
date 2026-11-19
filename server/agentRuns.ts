@@ -1,3 +1,4 @@
+import { prepareFirstShotRevision } from './firstShotRevision';
 import { recoveryAdvice } from './agentRecovery';
 import { proposeAgentRepair, type RepairAnalyzer } from './agentRepair';
 import { quotePlan, type PlanPricer } from './agentPlanQuote';
@@ -5,7 +6,7 @@ import { bypassesInternalCredits } from './auth';
 import { and, eq, asc } from 'drizzle-orm';
 import { randomUUID, createHash } from 'node:crypto';
 import { agentRuns, mediaJobs, users } from '../shared/schema';
-import { nextRunAction, validateRunSteps, type RunStep } from '../shared/agentRun';
+import { firstShotNeedsApproval, nextRunAction, validateRunSteps, type RunStep } from '../shared/agentRun';
 import { validateCampaign } from '../shared/agentCampaign';
 function publicRun(row: any) { return { ...row, campaign:row.campaign?JSON.parse(row.campaign):undefined, steps: JSON.parse(row.steps), sourceImage: undefined, userId: undefined }; }
 function imageSource(steps: RunStep[], i: number, fallback?: string) {
@@ -19,6 +20,15 @@ function imageSource(steps: RunStep[], i: number, fallback?: string) {
     if (p.sourceImage && p.sourceImage !== 'previous_result')
         return p.sourceImage;
     return steps.slice(0, i).reverse().find(s => s.type !== 'generate_video' && s.resultUrl)?.resultUrl || fallback;
+}
+function restorePreviousFirstShot(step: RunStep): boolean {
+    const previous = step.firstShotRevision && step.firstShotTakes?.at(-1);
+    if (!previous) return false;
+    step.status = 'success';
+    step.jobId = previous.jobId;
+    step.resultUrl = previous.url;
+    step.firstShotRevision = null;
+    return true;
 }
 export function registerAgentRuns(app: any, db: any, schedule: (id: string, userId: string, user: any) => void, readPersonasForUser: (id: string) => Promise<any[]>, price?: PlanPricer, analyzeRepair: RepairAnalyzer = proposeAgentRepair, supervision: {inspect?:(input:any)=>Promise<any>;analyze?:(run:any,work:()=>Promise<any>,model:string)=>Promise<any>} = {}) {
     const activeAnalysis = new Set<string>();
@@ -38,7 +48,7 @@ export function registerAgentRuns(app: any, db: any, schedule: (id: string, user
                     child = { ...child, request: JSON.parse(child.request || '{}'), result: JSON.parse(child.result || 'null') };
             }
             let action = nextRunAction(steps, child);
-            if(action.kind==='success' && r.visualReview && !['passed','accepted'].includes(steps[action.index].quality?.status||'')){
+            if(action.kind==='success' && !steps[action.index].reviewBeforeContinuing && r.visualReview && !['passed','accepted'].includes(steps[action.index].quality?.status||'')){
                 const i=action.index;
                 if(steps[i].quality?.status==='checking'){
                     if(Date.now()-Date.parse(steps[i].quality!.startedAt||'')<120000)return r;
@@ -53,17 +63,31 @@ export function registerAgentRuns(app: any, db: any, schedule: (id: string, user
                 const [saved]=await tx.update(agentRuns).set({steps:JSON.stringify(steps),updatedAt:new Date()}).where(eq(agentRuns.id,id)).returning();return saved;
             }
             if (action.kind === 'success') {
-                steps[action.index] = { ...steps[action.index], status: 'success', resultUrl: action.url };
+                const step = steps[action.index];
+                if (step.firstShotRevision) {
+                    step.firstShotTakes = [...(step.firstShotTakes || []), {
+                        jobId: step.jobId!, url: action.url, prompt: step.firstShotRevision.prompt,
+                    }];
+                    step.firstShotRevision = null;
+                }
+                steps[action.index] = { ...step, status: 'success', resultUrl: action.url };
                 action = nextRunAction(steps);
             }
             let status = 'running', error: string | null = null;
-            if (action.kind === 'complete')
+            if (action.kind === 'review-first-shot')
+                status = 'paused';
+            else if (action.kind === 'complete')
                 status = 'succeeded';
             else if (action.kind === 'fail') {
-                status = 'failed';
+                const step = steps[action.index];
                 error = action.error;
-                steps[action.index].status = 'error';
-                steps[action.index].error = action.error;
+                if (restorePreviousFirstShot(step)) {
+                    status = 'paused';
+                } else {
+                    status = 'failed';
+                    step.status = 'error';
+                    step.error = action.error;
+                }
             }
             else if (action.kind === 'wait') {
                 jobId = steps[action.index].jobId;
@@ -73,14 +97,16 @@ export function registerAgentRuns(app: any, db: any, schedule: (id: string, user
             }
             else {
                 try {
-                    const i = action.index, p = steps[i].params;
-                    const source = imageSource(steps, i, r.sourceImage);
+                    const i = action.index, step = steps[i], revision = step.firstShotRevision;
+                    const p = revision ? { ...step.params, prompt: revision.prompt, modelId: revision.modelId } : step.params;
+                    const reviseImage = revision && step.type !== 'generate_video';
+                    const source = reviseImage ? revision.sourceUrl : imageSource(steps, i, r.sourceImage);
                     let request: any, kind: string;
-                    if (steps[i].type === 'edit_image') {
+                    if (step.type === 'edit_image' || reviseImage) {
                         if (!source)
                             throw new Error('Choose a source image before editing.');
                         kind = 'edit';
-                        request = { sourceImage: source, prompt: p.prompt, modelId: p.modelId || 'wavespeed:bytedance/seedream-v5.0-pro' };
+                        request = { sourceImage: source, prompt: p.prompt, aspectRatio: p.aspectRatio, modelId: p.modelId || 'wavespeed:bytedance/seedream-v5.0-pro' };
                     }
                     else if (steps[i].type === 'generate_video') {
                         kind = 'video';
@@ -98,9 +124,14 @@ export function registerAgentRuns(app: any, db: any, schedule: (id: string, user
                     steps[i] = { ...steps[i], status: 'running', jobId };
                 }
                 catch (e) {
-                    status = 'failed';
+                    const step = steps[action.index];
                     error = e instanceof Error ? e.message : 'Could not start step';
-                    steps[action.index].status = 'error';
+                    if (restorePreviousFirstShot(step)) {
+                        status = 'paused';
+                    } else {
+                        status = 'failed';
+                        step.status = 'error';
+                    }
                 }
             }
             const [saved] = await tx.update(agentRuns).set({ steps: JSON.stringify(steps), status, error, updatedAt: new Date() }).where(eq(agentRuns.id, id)).returning();
@@ -145,6 +176,10 @@ export function registerAgentRuns(app: any, db: any, schedule: (id: string, user
             if (![projectId, messageId, personaId].every(x => typeof x === 'string' && x.length > 0 && x.length < 200))
                 return res.status(400).json({ error: 'Project, message and persona are required.' });
             const steps = validateRunSteps(req.body.steps);
+            const firstShotReview = req.body.firstShotReview === true;
+            if (firstShotReview && steps.length < 2)
+                return res.status(400).json({ error: 'First-shot review needs at least two steps.' });
+            if (firstShotReview) steps[0].reviewBeforeContinuing = true;
             if (sourceImage && (typeof sourceImage !== 'string' || !/^(https:\/\/|data:image\/)/.test(sourceImage)))
                 return res.status(400).json({ error: 'Invalid source image.' });
             const personas = await readPersonasForUser(req.user.id);
@@ -158,7 +193,7 @@ export function registerAgentRuns(app: any, db: any, schedule: (id: string, user
                 if(!price)return res.status(503).json({error:'Pricing unavailable. No generation was started.'});
                 const [owner]=await db.select({email:users.email,credits:users.credits}).from(users).where(eq(users.id,req.user.id));
                 if(!owner)return res.status(404).json({error:'Account not found'});
-                const estimate=await quotePlan(steps,price,owner.credits||0,bypassesInternalCredits(owner.email));
+                const estimate=await quotePlan(firstShotReview ? steps.slice(0, 1) : steps,price,owner.credits||0,bypassesInternalCredits(owner.email));
                 if(estimate.insufficientCredits)return res.status(402).json({error:`Insufficient credits. The priced steps need an estimated ${estimate.estimatedCredits} credits; your balance is ${estimate.balance}. No generation was started.`});
             }
             const campaign=validateCampaign(req.body.campaign,steps);
@@ -213,10 +248,26 @@ export function registerAgentRuns(app: any, db: any, schedule: (id: string, user
             return res.status(502).json({ error: e instanceof Error ? e.message : 'Repair analysis failed. You can still revise the step manually.' });
         } finally { activeAnalysis.delete(ownerId); }
     });
+    app.post('/api/agent-runs/:id/first-shot-revision-quote', async (req: any, res: any) => {
+        try {
+            if (!price) return res.status(503).json({ error: 'Pricing unavailable.' });
+            const [run] = await db.select().from(agentRuns).where(and(eq(agentRuns.id, req.params.id), eq(agentRuns.userId, req.user.id)));
+            if (!run) return res.status(404).json({ error: 'Plan not found.' });
+            if (run.status !== 'paused') return res.status(409).json({ error: 'This plan is no longer paused for first-shot review.' });
+            const steps: RunStep[] = JSON.parse(run.steps);
+            const { quoteStep } = prepareFirstShotRevision(steps, req.body || {});
+            const [owner] = await db.select({ email: users.email, credits: users.credits }).from(users).where(eq(users.id, req.user.id));
+            if (!owner) return res.status(404).json({ error: 'Account not found.' });
+            const quote = await quotePlan([quoteStep], price, owner.credits || 0, bypassesInternalCredits(owner.email));
+            return res.json({ ...quote, version: run.updatedAt.toISOString(), remainingAllowance: run.budgetCredits - run.usedCredits });
+        } catch (error) {
+            return res.status(400).json({ error: error instanceof Error ? error.message : 'Could not estimate revision.' });
+        }
+    });
     app.post('/api/agent-runs/:id/:action', async (req: any, res: any) => {
         try {
             const action = req.params.action;
-            if (!['stop', 'resume', 'retry','accept-result'].includes(action))
+            if (!['stop', 'resume', 'retry', 'accept-result', 'approve-first-shot', 'revise-first-shot'].includes(action))
                 return res.status(400).json({ error: 'Unsupported action' });
             const row = await db.transaction(async (tx: any) => {
                 const [r] = await tx.select().from(agentRuns).where(and(eq(agentRuns.id, req.params.id), eq(agentRuns.userId, req.user.id))).for('update');
@@ -228,6 +279,39 @@ export function registerAgentRuns(app: any, db: any, schedule: (id: string, user
                 if (action === 'resume' && r.status === 'failed')
                     throw new Error('A generation failed. Review it in generation history before retrying; automatic paid retry is disabled.');
                 const changes: any = { status: action === 'stop' ? 'paused' : 'running', updatedAt: new Date() };
+                if (action === 'resume' || action === 'approve-first-shot') {
+                    const steps: RunStep[] = JSON.parse(r.steps);
+                    const awaitingReview = firstShotNeedsApproval(steps);
+                    if (action === 'resume' && awaitingReview)
+                        throw new Error('Approve the first shot before continuing.');
+                    if (action === 'approve-first-shot') {
+                        if (r.status !== 'paused' || !awaitingReview || !steps[0].resultUrl)
+                            throw new Error('The first shot is not awaiting approval.');
+                        if (req.body?.takeJobId !== undefined) {
+                            const first = steps[0];
+                            const takes = first.firstShotTakes ?? [{ jobId: first.jobId, url: first.resultUrl }];
+                            const selected = takes.find(take => take.jobId === req.body.takeJobId);
+                            if (!selected) throw new Error('Choose a saved first-shot take.');
+                            first.resultUrl = selected.url;
+                            first.jobId = selected.jobId;
+                        }
+                        steps[0].reviewBeforeContinuing = false;
+                        changes.error = null;
+                        changes.steps = JSON.stringify(steps);
+                    }
+                }
+                if (action === 'revise-first-shot') {
+                    const steps: RunStep[] = JSON.parse(r.steps);
+                    if (r.status !== 'paused' || req.body?.version !== r.updatedAt.toISOString())
+                        throw new Error('This plan changed. Review the latest first shot and get a new estimate.');
+                    const { takes, revision } = prepareFirstShotRevision(steps, req.body || {});
+                    steps[0] = {
+                        ...steps[0], status: 'pending', jobId: undefined, resultUrl: undefined,
+                        firstShotTakes: takes, firstShotRevision: revision,
+                    };
+                    changes.steps = JSON.stringify(steps);
+                    changes.error = null;
+                }
                 if(action==='accept-result'){
                     const steps:RunStep[]=JSON.parse(r.steps),index=steps.findIndex(s=>s.status!=='success'),step=steps[index];
                     if(r.status!=='failed'||req.body?.version!==r.updatedAt.toISOString()||!step?.resultUrl||!['failed','uncertain'].includes(step.quality?.status||''))throw new Error('Inspect the current visual result before accepting it.');
@@ -251,7 +335,7 @@ export function registerAgentRuns(app: any, db: any, schedule: (id: string, user
                         if(typeof req.body.prompt!=='string'||!req.body.prompt.trim()||req.body.prompt.length>20000)throw new Error('A valid repair instruction is required.');
                         steps[index].params={...steps[index].params,prompt:req.body.prompt.trim()};
                     }
-                    steps[index] = { type: steps[index].type, params: steps[index].params, status: 'pending' };
+                    steps[index] = { type: steps[index].type, params: steps[index].params, status: 'pending', reviewBeforeContinuing: steps[index].reviewBeforeContinuing };
                     changes.steps = JSON.stringify(steps);
                     changes.error = null;
                 }

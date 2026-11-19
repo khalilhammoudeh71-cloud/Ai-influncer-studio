@@ -21,3 +21,12 @@ test('failed media persistence keeps existing history and surfaces the error', a
   await assert.rejects(saveAgentHistory('data:image/png;base64,abc',async()=>{throw new Error('upload failed');},v=>saved=v,()=>true),/upload failed/);
   assert.equal(saved,'previous');
 });
+
+test('document bytes are externalized before saving chat history', async () => {
+  for (const mime of ['application/pdf', 'text/plain']) {
+    let uploaded = false, stored = '';
+    await saveAgentHistory(JSON.stringify([{ attachments: [{ name: 'file', dataUrl: `data:${mime};base64,YWJj` }] }]), async () => { uploaded = true; return 'private-file-reference'; }, value => { stored = value; }, () => true);
+    assert.equal(uploaded, true);
+    assert.equal(stored, 'private-file-reference');
+  }
+});

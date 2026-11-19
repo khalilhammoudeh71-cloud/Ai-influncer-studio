@@ -1,7 +1,12 @@
+export type FirstShotTake = { jobId: string; url: string; prompt?: string };
+
 export type RunStep = {
     type: string;
     params: Record<string, any>;
     jobId?: string;
+    reviewBeforeContinuing?: boolean;
+    firstShotTakes?: FirstShotTake[];
+    firstShotRevision?: { sourceUrl: string; prompt: string; modelId?: string } | null;
     status: string;
     resultUrl?: string;
     error?: string;
@@ -34,7 +39,12 @@ export function validateRunSteps(steps: any): RunStep[] {
         return { type: s.type === 'generate_image' && (params.sourceImage || params.sourceImageFromStepIndex !== undefined) ? 'edit_image' : s.type, params, status: 'pending' };
     });
 }
+export function firstShotNeedsApproval(steps: Pick<RunStep, 'status' | 'reviewBeforeContinuing'>[]): boolean {
+    return steps[0]?.reviewBeforeContinuing === true && steps[0].status === 'success';
+}
+
 export function nextRunAction(steps: RunStep[], job?: any): any {
+    if (firstShotNeedsApproval(steps)) return { kind: 'review-first-shot' };
     const index = steps.findIndex(s => s.status !== 'success');
     if (index < 0)
         return { kind: 'complete' };
@@ -42,7 +52,7 @@ export function nextRunAction(steps: RunStep[], job?: any): any {
         return { kind: 'create', index };
     if (!job)
         return { kind: 'fail', index, error: 'The saved generation job is missing. No automatic retry was started.' };
-    if (job.status === 'succeeded' && steps[index].type === 'edit_image' && job.result?.url === job.request?.sourceImage)
+    if (job.status === 'succeeded' && (steps[index].type === 'edit_image' || (steps[index].firstShotRevision && steps[index].type !== 'generate_video')) && job.result?.url === job.request?.sourceImage)
         return { kind: 'fail', index, error: 'The edit returned the original image unchanged.' };
     if (job.status === 'succeeded')
         return job.result?.url ? { kind: 'success', index, url: job.result.url } : { kind: 'fail', index, error: 'Generation returned no usable output.' };

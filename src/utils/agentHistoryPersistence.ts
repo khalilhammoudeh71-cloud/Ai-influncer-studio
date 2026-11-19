@@ -5,7 +5,7 @@ export async function saveAgentHistory(
   write: (value: string) => void,
   isCurrent: () => boolean,
 ): Promise<void> {
-  const value = /data:(?:image|audio|video)\//.test(serialized)
+  const value = /data:(?:(?:image|audio|video)\/|application\/pdf|text\/plain)/.test(serialized)
     ? await persistMedia(serialized)
     : serialized;
   if (isCurrent()) write(value);

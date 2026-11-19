@@ -238,6 +238,7 @@ export async function editImageJob(
   modelId: string,
   additionalImage?: string,
   maskImage?: string,
+  aspectRatio?: string,
 ) {
   const compressedSource = await compressForUpload(sourceImage);
   const compressedAdditional = additionalImage ? await compressForUpload(additionalImage) : undefined;
@@ -248,6 +249,7 @@ export async function editImageJob(
     modelId,
     additionalImage: compressedAdditional,
     maskImage: compressedMask,
+    aspectRatio,
   });
   if (!job.result?.url) throw new Error(job.error || 'Image editing failed');
   return { imageUrl: job.result.url, model: job.result.model || modelId };

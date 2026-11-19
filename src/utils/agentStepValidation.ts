@@ -28,8 +28,9 @@ export function normalizeAgentSteps(value: unknown): NormalizedAgentStep[] {
     const type = typeof candidate.type === 'string' ? candidate.type.trim() : '';
     if (!SUPPORTED_AGENT_STEP_TYPES.has(type)) return [];
     const params = candidate.params && typeof candidate.params === 'object' && !Array.isArray(candidate.params)
-      ? candidate.params as Record<string, any>
+      ? { ...candidate.params as Record<string, any> }
       : {};
+    delete params.productionPreset; // Shot rules are applied separately from saved project settings.
     return [{ type, params, status: 'pending' }];
   });
 }

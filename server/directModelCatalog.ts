@@ -27,7 +27,7 @@ export function applyDirectModelSnapshot(snapshot: DirectModelSnapshot) {
 export async function discoverDirectModels(env: Record<string,string|undefined> = process.env, request: typeof fetch = fetch): Promise<DirectModelSnapshot> {
  const jobs = [
   {name:'Google', key:env.Gemini_api_key || env.gemini_api_key || env.GEMINI_API_KEY || env.AI_INTEGRATIONS_GEMINI_API_KEY, url:'https://generativelanguage.googleapis.com/v1beta/models?pageSize=1000', header:'x-goog-api-key', kind:'google'},
-  {name:'OpenAI', key:env.OPENAI_API_KEY || env.Openai_api_key || env.openai_api_key, url:'https://api.openai.com/v1/models', header:'Authorization', kind:'openai'},
+  {name:'OpenAI', key:env.OPENAI_API_KEY || env.Openai_api_key || env.openai_api_key || env.AI_INTEGRATIONS_OPENAI_API_KEY, url:'https://api.openai.com/v1/models', header:'Authorization', kind:'openai'},
   {name:'xAI', key:env.XAI_API_KEY || env.xai_api_key || env.X_AI_API_KEY, url:'https://api.x.ai/v1/models', header:'Authorization', kind:'openai'},
   {name:'ElevenLabs', key:env.ELEVENLABS_API_KEY || env.Elevenlabs_api_key, url:'https://api.elevenlabs.io/v1/models', header:'xi-api-key', kind:'eleven'},
  ];

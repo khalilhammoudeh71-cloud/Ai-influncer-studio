@@ -420,6 +420,7 @@ export const SUPER_AGENT_PLAN_TOOL = {
                 properties: {
                   prompt: {type:'string', description:'Full image or video scene, carrying forward all user details.'},
                   modelId: {type:'string'},
+                  productionPresetHint: {type:'string', description:'Exact ID of a matching saved shot preset from project context, if any.'},
                   usePersona: {type:'boolean', description:'False for objects, scenery, or requests without the active persona.'},
                   aspectRatio: {type:'string'},
                   duration: {type:'number',description:'Requested video duration in seconds.'},
@@ -597,4 +598,19 @@ export function assessCostLadderReply(
   }
 
   return { passed: true, decoded, quality: { ...quality, confidence } };
+}
+
+export function applyAgentImageModels<T extends { type: string; params: Record<string, any> }>(
+  steps: T[], adultMode: boolean,
+): T[] {
+  return steps.map(step => {
+    const edit = step.type === 'edit_image';
+    if (step.type !== 'generate_image' && !edit) return step;
+    if (edit && ['bg-remover', 'face-swap', 'virtual-tryon'].includes(step.params.editType)) return step;
+    const hasImageSource = edit || Boolean(step.params.sourceImage) || step.params.sourceImageFromStepIndex !== undefined;
+    const modelId = adultMode
+      ? (hasImageSource ? 'wavespeed-edit:bytedance/seedream-v5.0-pro/edit' : 'wavespeed:bytedance/seedream-v5.0-pro')
+      : 'openai:gpt-image-2.6-sunburst';
+    return { ...step, params: { ...step.params, modelId } };
+  });
 }

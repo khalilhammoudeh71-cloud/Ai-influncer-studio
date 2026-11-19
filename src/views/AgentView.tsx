@@ -1,3 +1,12 @@
+import { AgentTaskResult } from '../components/AgentTaskResult';
+import { isTaskDocument, type GeneralTaskResult } from '../../shared/agentGeneralTask';
+import { AgentIdeaCard } from '../components/AgentIdeaCard';
+import { ideaKey, readIdeaLibrary, rememberIdea, remixIdeaBrief, type IdeaEntry, type IdeaStatus } from '../../shared/agentIdeaLibrary';
+import { readSavedCreatorProject, type CreatorProfile, type CustomShotPreset } from '../../shared/agentCreatorProfile';
+import { AgentCreatorProfile } from '../components/AgentCreatorProfile';
+import { buildReelIdeaBrief, type ReelIdea } from '../../shared/agentReelIdeas';
+import { isProductionShot, legacyDrHPresets, productionStepsForExecution, setProductionPreset, suggestProductionPresets } from '../../shared/agentProductionPresets';
+import type { PlanningModel } from '../../shared/planningModels';
 import CompanyModelSelect from '../components/CompanyModelSelect';
 import { visibleAgentExchange, reuseCampaignAssets } from '../utils/agentExchange';
 import { readProjectBrief, serializeProjectBrief, projectBriefContext } from '../utils/agentProjectMemory';
@@ -11,8 +20,9 @@ import { validateCampaign, type AgentCampaign } from '../../shared/agentCampaign
 import { readAgentChatResponse } from '../utils/agentChatResponse';
 import { AgentRecovery } from '../components/AgentRecovery';
 import { AgentAllowance } from '../components/AgentAllowance';
+import { FirstShotReview } from '../components/FirstShotReview';
 import { AgentPlanApproval, type PlanApproval } from '../components/AgentPlanApproval';
-import { supportsBackground } from '../../shared/agentRun';
+import { firstShotNeedsApproval, supportsBackground, type FirstShotTake } from '../../shared/agentRun';
 import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
@@ -114,11 +124,14 @@ interface CollaborationMsg {
 }
 
 interface Message {
+  generalTask?: GeneralTaskResult;
   planningFailed?: boolean;
+  reelIdeas?: { ideas: ReelIdea[]; pick: number; reason: string };
   nativeVoicePlan?: boolean;
   campaign?: AgentCampaign;
   backgroundRunId?: string;
   backgroundStatus?: string;
+  backgroundRunError?: string;
   backgroundBudgetCredits?: number;
   backgroundUsedCredits?: number;
   id: string;
@@ -129,6 +142,7 @@ interface Message {
   suggestedSteps?: any[];
   critiqueLogs?: string[];
   collaborationLogs?: CollaborationMsg[];
+  creativeReview?: { status: 'reviewed' | 'unavailable'; kind: 'ideas' | 'production'; provider?: string; model?: string; promptTokens?: number; completionTokens?: number };
   agentMode?: {
     provider: string;
     model: string;
@@ -151,6 +165,9 @@ interface Message {
     params: any; 
     status: 'pending' | 'running' | 'success' | 'error' | 'done' | 'executing';
     resultUrl?: string;
+    reviewBeforeContinuing?: boolean;
+    jobId?: string;
+    firstShotTakes?: FirstShotTake[];
     quality?: {status:string;summary?:string};
     resultUrls?: string[];
     resultVersions?: ResultVersion[];
@@ -528,14 +545,60 @@ export default function AgentView(props: AgentViewProps) {
 }
 function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelectedPersonaId, onSelectPersona, nav, projectId, projects, onProjectChange, onCreateProject }: AgentViewProps & {projectId:string;projects:AgentProject[];onProjectChange:(id:string)=>void;onCreateProject:(name:string)=>void}) {
   const keys = projectKeys(projectId);
+  const presetPreferenceKey = `super_agent_production_presets_${projectId}`;
+  const [productionPresetsEnabled, setProductionPresetsEnabled] = useState(() => accountLocalStorage.getItem(presetPreferenceKey) === 'true');
+  const creatorProjectKey = `super_agent_creator_project_${projectId}`;
+  const [creatorProject, setCreatorProject] = useState(() => {
+    const saved = accountLocalStorage.getItem(creatorProjectKey);
+    const defaults = readSavedCreatorProject(saved);
+    return saved === null && accountLocalStorage.getItem(presetPreferenceKey) !== null
+      ? { ...defaults, presets: legacyDrHPresets } : defaults;
+  });
+
+  function saveCreatorProject(profile: CreatorProfile, presets: CustomShotPreset[]) {
+    const next = { profile, presets };
+    accountLocalStorage.setItem(creatorProjectKey, JSON.stringify(next));
+    setCreatorProject(next);
+  }
+
+  const ideaLibraryKey = `super_agent_idea_library_${projectId}`;
+  const [ideaLibrary, setIdeaLibrary] = useState<IdeaEntry[]>(() => {
+    try { return readIdeaLibrary(JSON.parse(accountLocalStorage.getItem(ideaLibraryKey) || '[]')); }
+    catch { return []; }
+  });
+  const [ideaLibraryOpen, setIdeaLibraryOpen] = useState(false);
+  const [ideaLibraryFilter, setIdeaLibraryFilter] = useState('saved');
+  function persistIdeaLibrary(next: IdeaEntry[]): boolean {
+    if (!getActiveStorageUserId()) { toast.error('Sign in to save project idea feedback.'); return false; }
+    try {
+      accountLocalStorage.setItem(ideaLibraryKey, JSON.stringify(next));
+      setIdeaLibrary(next);
+      return true;
+    } catch { toast.error('Could not save idea feedback.'); return false; }
+  }
+  function recordIdea(idea: ReelIdea, status: IdeaStatus, reason?: string) {
+    const next = rememberIdea(ideaLibrary, idea, status, reason);
+    return persistIdeaLibrary(next) ? next : ideaLibrary;
+  }
+  function forgetIdea(idea: ReelIdea) {
+    persistIdeaLibrary(ideaLibrary.filter(entry => ideaKey(entry.idea) !== ideaKey(idea)));
+  }
+  function renderIdeaCard(idea: ReelIdea, picked = false) {
+    return <AgentIdeaCard key={ideaKey(idea)} idea={idea} picked={picked} busy={isSending}
+      entry={ideaLibrary.find(entry => ideaKey(entry.idea) === ideaKey(idea))}
+      onFeedback={(status, reason) => recordIdea(idea, status, reason)} onForget={() => forgetIdea(idea)}
+      onBuild={() => { setIdeaLibraryOpen(false); const feedback = recordIdea(idea, 'built'); void sendMessage(buildReelIdeaBrief(idea, inputText), 'reel-build', feedback); }}
+      onRemix={() => { setIdeaLibraryOpen(false); const feedback = recordIdea(idea, 'remixed'); void sendMessage(remixIdeaBrief(idea, inputText), 'reel-ideas', feedback); }} />;
+  }
+
   const [backgroundError,setBackgroundError]=useState('');
   const syncBackgroundRun = (run:any) => setMessages(prev=>{
     const index=prev.findIndex(m=>m.id===run.messageId);
     const original:Message=index>=0?prev[index]:{id:run.messageId,role:'model' as const,content:'Saved background plan'};
-    const updated:Message={...original,campaign:run.campaign || original.campaign,backgroundRunId:run.id,backgroundStatus:run.status,backgroundBudgetCredits:run.budgetCredits,backgroundUsedCredits:run.usedCredits,
+    const updated:Message={...original,campaign:run.campaign || original.campaign,backgroundRunId:run.id,backgroundStatus:run.status,backgroundRunError:run.error || undefined,backgroundBudgetCredits:run.budgetCredits,backgroundUsedCredits:run.usedCredits,
       isExecuting:run.status==='running',status:run.status==='succeeded'?'done':run.status==='running'?'executing':'normal',
       execSteps:run.steps.map((step:any,i:number)=>({...original.execSteps?.[i],...step})),
-      execLogs:run.error?[run.error]:[run.status==='running'?'Saved on the server. You can close this page.':run.status==='paused'?'Paused before the next step. The current generation may still finish.':run.status==='succeeded'?'All steps completed. Assets are saved in Library.':'Plan needs attention.'],
+      execLogs:run.error?[run.error]:[run.status==='running'?'Saved on the server. You can close this page.':run.status==='paused'?(firstShotNeedsApproval(run.steps)?'First shot ready for your approval.':'Paused before the next step. The current generation may still finish.'):run.status==='succeeded'?'All steps completed. Assets are saved in Library.':'Plan needs attention.'],
     };
     if(index<0)return [...prev,updated];
     if(JSON.stringify(original)===JSON.stringify(updated))return prev;
@@ -563,6 +626,8 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
   const [inputText, setInputText] = useState('');
   const [composerExpanded,setComposerExpanded] = useState(false);
   const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const [pendingDocumentUploads, setPendingDocumentUploads] = useState(0);
+  const [generalTaskMode, setGeneralTaskMode] = useState(false);
   const [messages, setMessages] = useState<Message[]>(() => restoreConversation(accountLocalStorage.getItem(keys.history)));
   const currentExchangeMessages = visibleAgentExchange(messages);
 
@@ -615,6 +680,50 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
   const [autoApprove, setAutoApprove] = useState(false);
   const [allowNsfw, setAllowNsfw] = useState(() => localStorage.getItem('agent_allow_nsfw') === 'true');
   const [planningModel,setPlanningModel]=useState(()=>accountLocalStorage.getItem("agent_planning_model")||"");
+  const controlsRef = useRef<HTMLDetailsElement>(null);
+  const controlsTriggerRef = useRef<HTMLElement>(null);
+  function closeControls() {
+    if (controlsRef.current) controlsRef.current.open = false;
+    controlsTriggerRef.current?.focus();
+  }
+  const [planningCatalog, setPlanningCatalog] = useState<PlanningModel[] | null>(null);
+  const [planningCatalogError, setPlanningCatalogError] = useState(false);
+  useEffect(() => {
+    let active = true;
+    api.modelCatalog.planning().then(
+      models => { if (active) setPlanningCatalog(models); },
+      () => { if (active) setPlanningCatalogError(true); },
+    );
+    return () => { active = false; };
+  }, []);
+  const legacyPlanningNames: Record<string, string> = {
+    'frontier-grok': 'Grok 4.6',
+    'frontier-gemini-pro': 'Gemini 3.1 Pro Preview',
+    'frontier-gemini-flash': 'Gemini 3.8 Flash',
+  };
+  const legacyCatalogIds: Record<string, string> = {
+    'frontier-grok': 'catalog:grok-4.6',
+    'frontier-gemini-pro': 'catalog:gemini-3.1-pro-preview',
+    'frontier-gemini-flash': 'catalog:gemini-3.8-flash',
+  };
+  const displayedPlanningModel = planningCatalog?.some(model => model.id === legacyCatalogIds[planningModel])
+    ? legacyCatalogIds[planningModel] : planningModel;
+  const planningChoices = [
+    { id: '', name: 'Adaptive' },
+    ...(planningCatalog ?? []).map(model => ({
+      id: model.id, name: model.name, detail: model.providers.join(' · '),
+      provider: model.providers.join(' '),
+    })),
+  ];
+  if (displayedPlanningModel && !planningChoices.some(model => model.id === displayedPlanningModel)) {
+    planningChoices.push({
+      id: planningModel,
+      name: legacyPlanningNames[planningModel] || planningModel.replace(/^catalog:/, ''),
+      detail: planningModel.startsWith('catalog:') ? 'Saved selection' : 'Saved model',
+      provider: '',
+    });
+  }
+
   const [interactionMode, setInteractionMode] = useState<'plan' | 'build'>(() =>
     accountLocalStorage.getItem('super_agent_interaction_mode') === 'plan' ? 'plan' : 'build'
   );
@@ -1649,7 +1758,21 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
     if (!files) return;
 
     Array.from(files).forEach(file => {
-      if (file.type.startsWith('image/')) {
+      if (isTaskDocument(file.name)) {
+        const maxBytes = file.name.toLowerCase().endsWith('.pdf') ? 8_000_000 : 250_000;
+        if (file.size > maxBytes) { toast.error(`${file.name}: use a PDF under 8 MB or a text/CSV/JSON file under 250 KB.`); return; }
+        const reader = new FileReader();
+        setPendingDocumentUploads(count => count + 1);
+        reader.onload = () => {
+          const mimeType = file.name.toLowerCase().endsWith('.pdf') ? 'application/pdf' : 'text/plain';
+          const dataUrl = String(reader.result || '').replace(/^data:[^;]*;base64,/, `data:${mimeType};base64,`);
+          setAttachments(prev => [...prev, { name: file.name, dataUrl, mimeType }]);
+          setGeneralTaskMode(true);
+        };
+        reader.onerror = () => toast.error(`Could not read ${file.name}. Try attaching it again.`);
+        reader.onloadend = () => setPendingDocumentUploads(count => Math.max(0, count - 1));
+        reader.readAsDataURL(file);
+      } else if (file.type.startsWith('image/')) {
         const reader = new FileReader();
         reader.onload = (ev) => {
           const img = new Image();
@@ -1809,9 +1932,11 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
     toast.success('Preset deleted.');
   };
 
-  const sendMessage = async (overrideText?: string) => {
+  const sendMessage = async (overrideText?: string, intent?: 'reel-ideas' | 'reel-build' | 'general-task', ideaFeedback = ideaLibrary) => {
+    const useGeneralTask = intent === 'general-task' || (!intent && (generalTaskMode || attachments.some(file => isTaskDocument(file.name))));
+    const modeForRequest = useGeneralTask || intent === 'reel-ideas' ? 'plan' : intent === 'reel-build' ? 'build' : interactionMode;
     const textToSend = overrideText !== undefined ? overrideText : inputText;
-    if ((!textToSend.trim() && attachments.length === 0) || isSending) return;
+    if ((!textToSend.trim() && attachments.length === 0) || isSending || pendingDocumentUploads > 0) return;
 
     const isLiveCall = isLiveVoiceCallActive || isLiveVoiceCallActiveRef.current;
 
@@ -1841,8 +1966,10 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
     try {
       const history = [...messages, userMessage].slice(-60).map(m => ({
         role: m.role,
-        content: m.content + (m.execSteps?.length ? '\n[Workspace task state — context only, never repeat verbatim]: ' + JSON.stringify(taskContext(m.execSteps)) : '') + (m.campaign ? '\n[Saved campaign draft — context for revisions, not authorization to execute or publish]: ' + JSON.stringify(m.campaign) : ''),
-        attachments: m.attachments
+        content: m.content + (m.reelIdeas ? '\nEarlier reel pitches: ' + JSON.stringify(m.reelIdeas.ideas) : '') + (m.execSteps?.length ? '\n[Workspace task state — context only, never repeat verbatim]: ' + JSON.stringify(taskContext(m.execSteps)) : '') + (m.campaign ? '\n[Saved campaign draft — context for revisions, not authorization to execute or publish]: ' + JSON.stringify(m.campaign) : ''),
+        attachments: m.attachments,
+        taskArtifacts: m.generalTask?.artifacts,
+        ...(m.generalTask ? { taskContext: { status: m.generalTask.status, plan: m.generalTask.plan, trace: m.generalTask.trace, checks: m.generalTask.checks } } : {}),
       }));
 
       let authHeader: Record<string, string> = {};
@@ -1868,8 +1995,14 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
           messages: workspaceBrief.trim() ? [{role:'user',content:projectBriefContext(workspaceBrief)}, ...history] : history,
           previousDraft: [...messages].reverse().find(m=>m.campaign)?.campaign ? (()=>{const previous=[...messages].reverse().find(m=>m.campaign)!;return {campaign:previous.campaign,suggestedSteps:previous.execSteps||previous.suggestedSteps};})() : undefined,
           allowNsfw,
-          interactionMode,
-          voiceLlmModel: planningModel || voiceLlmModel,
+          interactionMode: modeForRequest,
+          generalTask: useGeneralTask,
+          brainstormReels: intent === 'reel-ideas',
+          buildReelIdea: intent === 'reel-build',
+          creatorProfile: creatorProject.profile,
+          ideaFeedback,
+          shotPresets: productionPresetsEnabled ? creatorProject.presets : [],
+          textPlanningModel: displayedPlanningModel || 'adaptive',
           researchMode: {
             deepResearch: deepResearchActive,
             socialResearch: socialResearchActive,
@@ -1881,7 +2014,8 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
       });
 
       const data = await readAgentChatResponse(res);
-      const normalizedSteps = interactionMode === 'build' ? normalizeAgentSteps(data.suggestedSteps) : [];
+      const draftSteps = modeForRequest === 'build' ? normalizeAgentSteps(data.suggestedSteps) : [];
+      const normalizedSteps = productionPresetsEnabled ? suggestProductionPresets(draftSteps, creatorProject.presets) : draftSteps;
       const finalSuggestedSteps = normalizedSteps.length > 0 ? normalizedSteps : undefined;
       const finalCritiqueLogs = Array.isArray(data.critiqueLogs)
         ? data.critiqueLogs.filter((entry: unknown): entry is string => typeof entry === 'string')
@@ -1904,6 +2038,9 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
         sources: Array.isArray(data.sources) ? data.sources.filter((s:any) => typeof s?.url === 'string' && /^https?:\/\//.test(s.url)) : undefined,
         status: retainedAssets ? 'done' : finalSuggestedSteps ? 'clarifying' : 'normal',
         suggestedSteps: finalSuggestedSteps,
+        reelIdeas: intent === 'reel-ideas' ? data.reelIdeas : undefined,
+        creativeReview: data.creativeReview,
+        generalTask: data.generalTask,
         campaign: validateCampaign(data.campaign, finalSuggestedSteps || []),
         critiqueLogs: finalCritiqueLogs,
         collaborationLogs: finalCollaborationLogs,
@@ -1917,7 +2054,7 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
       setMessages(prev => [...prev.slice(-99), newMsgObj]);
       setComposerExpanded(false);
 
-      if (interactionMode === 'build' && newMsgObj.execSteps?.length && canAutoRun(autoApprove, userMessage.content)) {
+      if (!intent && modeForRequest === 'build' && newMsgObj.execSteps?.length && canAutoRun(autoApprove, userMessage.content)) {
         setTimeout(() => {
           runPipeline(newMsgId, newMsgObj);
         }, 50);
@@ -1934,7 +2071,7 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
         status: 'normal'
       };
       setMessages(prev => [...prev.slice(-99), chatMsgObj]);
-      toast.error('Request failed. Your previous campaign and results are still saved.');
+      toast.error(useGeneralTask ? 'The task could not start. Try again.' : intent ? 'The reel request failed. Try again.' : 'Request failed. Your previous campaign and results are still saved.');
     } finally {
       setIsSending(false);
     }
@@ -2372,14 +2509,15 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
   const runPipeline = async (messageId: string, directMsg?: Message, approval?: PlanApproval) => {
     const targetMsg = directMsg || messages.find(m => m.id === messageId);
     if (!targetMsg || !targetMsg.execSteps || targetMsg.isExecuting || runningPlans.current.has(messageId)) return;
-    if(supportsBackground(targetMsg.execSteps) && !targetMsg.execSteps.some(s=>['success','done'].includes(s.status))){
+    const executableSteps = productionStepsForExecution(targetMsg.execSteps, clonedVoiceId);
+    if(supportsBackground(executableSteps) && !targetMsg.execSteps.some(s=>['success','done'].includes(s.status))){
       if(!approval){toast('Review the plan cost and set an allowance before starting.');return;}
       runningPlans.current.add(messageId);
       try{
         const source=previousImage(messages)||[...messages].reverse().flatMap(m=>m.attachments||[]).find(a=>a.mimeType.startsWith('image/'))?.dataUrl;
-        const response=await authFetch('/api/agent-runs',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({projectId,messageId,personaId:effectiveSelectedPersonaId,steps:targetMsg.execSteps,campaign:targetMsg.campaign,sourceImage:source,...approval})});
+        const response=await authFetch('/api/agent-runs',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({projectId,messageId,personaId:effectiveSelectedPersonaId,steps:executableSteps,campaign:targetMsg.campaign,sourceImage:source,...approval})});
         const data=await response.json();if(!response.ok)throw new Error(data.error||'Could not save background plan');
-        syncBackgroundRun(data.run);toast.success('Plan saved. It can continue after you close this page.');
+        syncBackgroundRun(data.run);toast.success(approval.firstShotReview ? 'Plan saved. It will pause for first-shot approval.' : 'Plan saved. It can continue after you close this page.');
       }catch(e){toast.error(e instanceof Error?e.message:'Could not start background plan');}
       finally{runningPlans.current.delete(messageId);}
       return;
@@ -2419,7 +2557,7 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
     
     let activeStepIndex = -1;
     const executionReport: Array<{ index: number; type: string; status: 'success' | 'error'; error?: string }> = [];
-    const stepsList = (targetMsg.execSteps || []).map(step => ({...step,params:{...step.params}}));
+    const stepsList = executableSteps.map(step => ({...step,params:{...step.params}}));
 
     try {
       let memoryFaceImage: string | null = null;
@@ -2791,15 +2929,16 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
           }
 
           let avatarImg = step.params.image || createdPersona.avatar || createdPersona.referenceImage;
-
-          // Resolve starting frame from previous step (e.g. edited image) if present
-          for (let sIdx = 0; sIdx < i; sIdx++) {
-            const prev = stepsList[sIdx];
-            if (prev && prev.status === 'success' && prev.resultUrl && (prev.type === 'edit_image' || prev.type === 'generate_image')) {
-              avatarImg = prev.resultUrl;
-              addLocalLog(`🧠 [Continuity Lock]: Using generated visual from Step ${sIdx + 1} as starting frame for avatar video.`);
-              break;
-            }
+          const sourceIndex = step.params.sourceImageFromStepIndex;
+          if (sourceIndex !== undefined) {
+            const source = Number.isInteger(sourceIndex) && sourceIndex >= 0 && sourceIndex < i ? stepsList[sourceIndex] : undefined;
+            if (!source?.resultUrl || source.status !== 'success' || !['generate_image', 'edit_image'].includes(source.type))
+              throw new Error('The selected talking-head portrait is not ready.');
+            avatarImg = source.resultUrl;
+          } else if (!step.params.image) {
+            const source = stepsList.slice(0, i).find(previous =>
+              previous.status === 'success' && previous.resultUrl && ['generate_image', 'edit_image'].includes(previous.type));
+            if (source?.resultUrl) avatarImg = source.resultUrl;
           }
 
           if (!avatarImg) throw new Error('Avatar image is required for talking head video.');
@@ -2973,6 +3112,9 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
               srcImg,
               step.params.prompt || 'Enhance image details',
               chosenEditModel,
+              undefined,
+              undefined,
+              step.params.aspectRatio,
             );
             editedUrl = data.imageUrl;
           }
@@ -3066,7 +3208,7 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
                 { role: 'user', content: recoveryPrompt },
               ],
               allowNsfw,
-              voiceLlmModel: planningModel || voiceLlmModel,
+              textPlanningModel: displayedPlanningModel || 'adaptive',
               researchMode: {
                 deepResearch: false,
                 socialResearch: false,
@@ -3140,6 +3282,20 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
 
   return (
     <div className="agent-workspace relative flex-1 flex h-full min-h-0 overflow-hidden bg-[var(--bg-base)]">
+      {ideaLibraryOpen && <section aria-label="Project idea library" className="absolute inset-0 z-50 flex flex-col bg-[#121214] p-4 sm:p-6">
+        <div className="flex items-center justify-between gap-3">
+          <h2 className="text-lg font-semibold text-zinc-100">Project idea library</h2>
+          <button type="button" aria-label="Close idea library" onClick={() => setIdeaLibraryOpen(false)} className="min-h-11 min-w-11 text-2xl text-zinc-300">×</button>
+        </div>
+        <p className="my-3 text-sm text-zinc-400">Feedback belongs to this project and helps shape future pitches. Remix uses your composer direction, if any. Build prepares a plan for review.</p>
+        <label className="mb-3 text-sm text-zinc-300">Show <select value={ideaLibraryFilter} onChange={event => setIdeaLibraryFilter(event.target.value)} className="ml-2 min-h-11 rounded-lg bg-[#252527] px-3">
+          <option value="saved">Saved</option><option value="all">All feedback</option><option value="passed">Passed</option><option value="remixed">Remixed</option><option value="built">Build requested</option>
+        </select></label>
+        <div className="min-h-0 flex-1 overflow-y-auto text-sm text-zinc-300">
+          <div className="grid gap-3 md:grid-cols-2">{ideaLibrary.filter(entry => ideaLibraryFilter === 'all' || (ideaLibraryFilter === 'saved' ? entry.saved : entry.status === ideaLibraryFilter)).map(entry => renderIdeaCard(entry.idea))}</div>
+          {!ideaLibrary.some(entry => ideaLibraryFilter === 'all' || (ideaLibraryFilter === 'saved' ? entry.saved : entry.status === ideaLibraryFilter)) && <p className="py-6">No ideas here yet. Save or pass on a pitch in chat to start.</p>}
+        </div>
+      </section>}
       {/* Hidden file input for face swapping */}
       <input
         type="file"
@@ -3166,15 +3322,27 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
                 {projects.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}
               </select>
             <button type="button" aria-label="New chat" onClick={()=>onCreateProject(`Chat ${projects.length}`)} disabled={isSending || isLiveVoiceCallActive || isStudioLoading || isCloningVoice || messages.some(m=>(m.isExecuting && !m.backgroundRunId) || m.execSteps?.some(s=>s.isActionLoading)) || historySaving || historySaveFailed} className="flex items-center gap-1 rounded-xl border border-white/10 px-3 py-2 text-xs font-semibold text-zinc-300 hover:border-[#E7C477]/30 hover:text-[#F2D58D] disabled:opacity-40"><Plus size={13} /> New</button>
+            <button type="button" aria-expanded={ideaLibraryOpen} onClick={() => setIdeaLibraryOpen(value => !value)} className="min-h-11 rounded-xl border border-white/10 px-3 text-xs font-semibold text-zinc-300">Idea library ({ideaLibrary.length})</button>
             <span role="status" className="text-xs text-zinc-400">{historySaveFailed ? 'History not saved' : historySaving ? 'Saving history…' : ''}</span>
           </div>
 
           {/* Advanced controls stay available without competing with the brief. */}
-          <details className="group relative z-40 ml-auto">
-            <summary className="flex cursor-pointer list-none items-center gap-2 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 text-xs font-semibold text-zinc-300 transition-colors hover:border-[#E7C477]/30 hover:text-[#F2D58D]">
+          <details ref={controlsRef} className="group relative z-40 ml-auto" onKeyDown={event => {
+            if (event.key === 'Escape' && !event.defaultPrevented && controlsRef.current?.contains(event.target as Node)) {
+              event.preventDefault();
+              event.stopPropagation();
+              closeControls();
+            }
+          }}>
+            <summary ref={controlsTriggerRef} className="flex cursor-pointer list-none items-center gap-2 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 text-xs font-semibold text-zinc-300 transition-colors hover:border-[#E7C477]/30 hover:text-[#F2D58D]">
               <Sliders size={14} /> Controls
             </summary>
             <div className="absolute right-0 top-full mt-2 max-h-[min(640px,70dvh)] overflow-y-auto overscroll-contain custom-scrollbar flex w-[min(92vw,470px)] flex-wrap items-center gap-2 rounded-2xl border border-white/10 bg-[#1C1C20]/98 p-3 shadow-2xl backdrop-blur-xl">
+            <div className="sticky top-0 z-10 flex w-full justify-end rounded-lg bg-[#1C1C20]">
+              <button type="button" aria-label="Close controls" onClick={closeControls} className="grid h-11 w-11 place-items-center rounded-lg text-zinc-300 hover:bg-white/10 hover:text-white">
+                <X size={18} aria-hidden="true" />
+              </button>
+            </div>
             <details open className="w-full rounded-xl border border-white/10 bg-black/15">
               <summary className="flex min-h-11 cursor-pointer items-center gap-2 px-3 text-sm font-semibold text-zinc-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#E7C477]"><Sliders size={14} className="text-[#E7C477]"/>Task behavior</summary>
               <div className="space-y-3 border-t border-white/10 p-3">
@@ -3212,14 +3380,22 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
             </button>
 
                 </div>
+            <label className="flex min-h-11 items-center gap-2 text-sm text-zinc-200">
+              <input type="checkbox" checked={productionPresetsEnabled} onChange={event => {
+                setProductionPresetsEnabled(event.target.checked);
+                accountLocalStorage.setItem(presetPreferenceKey, String(event.target.checked));
+              }} />
+              Suggest saved shot presets
+            </label>
+            <AgentCreatorProfile profile={creatorProject.profile} presets={creatorProject.presets} onSave={saveCreatorProject} />
             <label className="block text-xs text-zinc-300">Text planning model
-              <CompanyModelSelect aria-label="Text planning model" value={planningModel} onChange={e=>{setPlanningModel(e.target.value);accountLocalStorage.setItem('agent_planning_model',e.target.value);}} className="mt-2 w-full rounded-lg border border-white/15 bg-zinc-900 p-2 text-zinc-100">
-                <option value="">Use configured engine</option>
-                <option value="frontier-grok">Grok 4.6</option>
-                <option value="frontier-gemini-pro">Gemini 3.1 Pro Preview</option>
-                <option value="frontier-gemini-flash">Gemini 3.8 Flash</option>
-              </CompanyModelSelect>
-              <p className="mt-1 text-zinc-400">Applies to text tasks. Voice keeps its configured engine. Selected frontier models do not silently fall back.</p>
+              <CompanyModelSelect aria-label="Text planning model" items={planningChoices} value={displayedPlanningModel} onChange={e => {
+                setPlanningModel(e.target.value);
+                accountLocalStorage.setItem('agent_planning_model', e.target.value);
+              }} className="mt-2 w-full rounded-lg border border-white/15 bg-zinc-900 p-2 text-zinc-100" />
+              <p className="mt-1 text-zinc-400" role="status">{planningCatalogError ? 'The model catalog could not load. Adaptive is still available.' :
+                planningCatalog === null ? 'Loading models…' : planningCatalog.length === 0 ? 'No text models were returned by the configured providers.' :
+                'Adaptive chooses a model for each request. This setting applies to text only.'}</p>
             </label>
               </div>
             </details>
@@ -3609,7 +3785,20 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
                         ? 'bg-[#252527] border-white/10 text-zinc-100 rounded-tr-none'
                         : 'bg-white/5 border-white/10 text-zinc-100 rounded-tl-none'
                     }`}>
-                      <div className="whitespace-pre-wrap">{msg.content}</div>
+                      <div className="whitespace-pre-wrap">{msg.reelIdeas ? `My pick: ${msg.reelIdeas.ideas[msg.reelIdeas.pick]?.title}. ${msg.content}` : msg.content}</div>
+                      {msg.reelIdeas && <div className="mt-3 grid gap-3 sm:grid-cols-2" aria-label="Reel ideas">
+                        {msg.reelIdeas.ideas.map((idea, index) => renderIdeaCard(idea, index === msg.reelIdeas?.pick))}
+                      </div>}
+                      {msg.generalTask && <AgentTaskResult task={msg.generalTask} busy={isSending} onContinue={() => void sendMessage('Continue the unfinished general task using the previous plan, results and attached documents. Complete the remaining work or explain exactly what is missing.', 'general-task')} />}
+                      {msg.creativeReview && <details className="mt-3 text-xs text-zinc-400">
+                        <summary className="min-h-8 cursor-pointer">{msg.creativeReview.status === 'reviewed' ? 'Critique & rewrite completed' : 'Critique unavailable · showing the original draft'}</summary>
+                        <p className="mt-1">{msg.creativeReview.status === 'reviewed'
+                          ? (msg.creativeReview.kind === 'ideas' ? 'Reviewed for audience fit, hook, payoff, repetition and production practicality. This is model judgment, not a prediction of performance.' : 'Reviewed for hook, payoff, dialogue, continuity and production practicality. Media capabilities and final quality still need verification.')
+                          : 'The extra review did not return a usable result. Review this draft carefully before building.'}</p>
+                        <p className="mt-1">Review: {msg.creativeReview.provider} · {msg.creativeReview.model}. One additional text request; its cost is not included in the planning cost above.
+                          {typeof msg.creativeReview.promptTokens === 'number' ? ` Input tokens: ${msg.creativeReview.promptTokens}.` : ''}
+                          {typeof msg.creativeReview.completionTokens === 'number' ? ` Output tokens: ${msg.creativeReview.completionTokens}.` : ''}</p>
+                      </details>}
                       {msg.sources?.length ? <div className="mt-3 flex flex-wrap gap-2" aria-label="Research sources">{msg.sources.map(source => <a key={source.url} href={source.url} target="_blank" rel="noreferrer" className="rounded-lg border border-[#E7C477]/25 px-2 py-1 text-xs text-[#E7C477] underline">{source.title}</a>)}</div> : null}
 
                       {/* Attachments rendering */}
@@ -3708,7 +3897,13 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
 
                           {msg.execSteps.some(s => s.status === 'error') && <p role="alert" className="text-xs text-amber-200">{msg.execLogs?.at(-1) || 'A step failed. Completed results are kept; unfinished work needs review.'}</p>}
                           <div className="space-y-3">
-                            {msg.execSteps.map((step, sIdx) => (
+                            {msg.execSteps.map((step, sIdx) => {
+                              const preset = step.params.productionPreset;
+                              const patchShot = (update: (shot: typeof step) => typeof step) => setMessages(previous =>
+                                previous.map(message => message.id !== msg.id ? message : {
+                                  ...message, execSteps: message.execSteps?.map((shot, index) => index === sIdx ? update(shot) : shot),
+                                }));
+                              return (
                               <div key={sIdx} className="p-3 rounded-xl bg-white/5 border border-white/5 space-y-2">
                                 <div className="flex items-center justify-between">
                                   <div className="flex items-center gap-2">
@@ -3720,9 +3915,47 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
                                       {step.status === 'done' || step.status === 'success' ? <Check size={12} /> : sIdx + 1}
                                     </div>
                                     <span className="text-xs font-bold text-white capitalize">{String(step.type || 'task').replace(/_/g, ' ')}</span>
+                                    {step.params.modelId === 'openai:gpt-image-2.6-sunburst' && <span className="text-xs text-zinc-400">GPT Image 2.6 Sunburst</span>}
+                                    {typeof step.params.modelId === 'string' && /^wavespeed(?:-edit)?:bytedance\/seedream-v5\.0-pro(?:\/edit)?$/.test(step.params.modelId) && <span className="text-xs text-zinc-400">Seedream 5 Pro</span>}
                                   </div>
                                 </div>
 
+                                {!msg.backgroundRunId && !msg.isExecuting && step.status === 'pending' && isProductionShot(step) && <div className="space-y-2 text-xs text-zinc-300">
+                                  <label className="block">Production preset
+                                    <select aria-label={`Production preset for step ${sIdx + 1}`} value={preset?.id || ''} onChange={event => {
+                                      const id = event.target.value;
+                                      patchShot(shot => setProductionPreset(shot, id, creatorProject.presets));
+                                    }} className="ml-2 rounded-lg border border-white/15 bg-zinc-900 px-2 py-1">
+                                      <option value="">None</option>
+                                      {creatorProject.presets.map(choice => <option key={choice.id} value={choice.id}>{choice.name}</option>)}
+                                      {preset && !creatorProject.presets.some(choice => choice.id === preset.id) && <option value={preset.id}>{preset.name || preset.id} (saved with shot)</option>}
+                                    </select>
+                                  </label>
+                                  {preset && (step.type === 'generate_talking_head' ? <div className="space-y-1">
+                                    <p>Appearance and framing come from the source portrait.</p>
+                                    <label className="block">Voice override
+                                      <input value={step.params.voiceId || ''} placeholder={clonedVoiceId || 'Aoede'} maxLength={150} onChange={event => {
+                                        const voiceId = event.target.value;
+                                        patchShot(shot => ({ ...shot, params: { ...shot.params, voiceId } }));
+                                      }} className="mt-1 w-full rounded-lg border border-white/15 bg-black/20 p-2" />
+                                    </label>
+                                  </div> : <>
+                                    <label className="block">Shot rules
+                                      <textarea value={preset.rules} maxLength={2000} rows={3} onChange={event => {
+                                        const rules = event.target.value;
+                                        patchShot(shot => ({ ...shot, params: { ...shot.params, productionPreset: { ...preset, rules } } }));
+                                      }} className="mt-1 w-full rounded-lg border border-white/15 bg-black/20 p-2" />
+                                    </label>
+                                    <label className="block">Aspect ratio
+                                      <select value={preset.aspectRatio} onChange={event => {
+                                        const aspectRatio = event.target.value;
+                                        patchShot(shot => ({ ...shot, params: { ...shot.params, productionPreset: { ...preset, aspectRatio } } }));
+                                      }} className="ml-2 rounded-lg border border-white/15 bg-zinc-900 px-2 py-1">
+                                        {[...new Set(['', '9:16', '1:1', '16:9', '4:5', '3:4', '2:3', preset.aspectRatio])].map(ratio => <option key={ratio} value={ratio}>{ratio || 'Use shot framing'}</option>)}
+                                      </select>
+                                    </label>
+                                  </>)}
+                                </div>}
                                 {!msg.isExecuting && (step.status === 'pending' || step.status === 'error') && <textarea readOnly={Boolean(msg.backgroundRunId)} aria-label={`Instructions for step ${sIdx + 1}`} value={step.params.prompt || step.params.text || ''} onChange={e => setMessages(prev => prev.map(m => m.id === msg.id ? {...m,execSteps:m.execSteps?.map((s,index) => index === sIdx ? {...s,params:{...s.params,[s.type === 'generate_voice' ? 'text' : 'prompt']:e.target.value}} : s)} : m))} className="w-full rounded-lg border border-white/10 bg-black/20 p-2 text-xs text-zinc-200" rows={3} />}
                                 {(step.resultVersions?.length || 0) > 1 && ['generate_image','edit_image'].includes(step.type) && <details className="text-xs text-zinc-300">
                                   <summary className="cursor-pointer py-2">Compare versions ({step.resultVersions!.length})</summary>
@@ -3732,7 +3965,7 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
                                   </figure>)}</div>
                                 </details>}
                                 {step.quality && <p role="status" className="text-xs text-zinc-300">{step.quality.status==='checking'?'Checking this result against your request…':step.quality.status==='passed'?'Visual check passed.':step.quality.summary}</p>}
-                                {step.resultUrl && (
+                                {step.resultUrl && !(sIdx === 0 && msg.backgroundStatus === 'paused' && firstShotNeedsApproval(msg.execSteps || [])) && (
                                   <div className="mt-2 rounded-xl overflow-hidden border border-white/10 bg-black/50">
                                     {step.type === 'generate_voice' ? <audio src={step.resultUrl} controls className="w-full" /> : step.type === 'generate_3d' ? <a href={step.resultUrl} target="_blank" rel="noreferrer">Open 3D asset</a> : step.type.includes('video') || step.type === 'generate_talking_head' || step.type === 'storyboard_sequence' ? (
                                       <video src={step.resultUrl} controls className="w-full max-h-64 object-contain" />
@@ -3742,16 +3975,21 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
                                   </div>
                                 )}
                               </div>
-                            ))}
+                            ); })}
                           </div>
                           {msg.isExecuting && <button type="button" onClick={() => {if(msg.backgroundRunId){void backgroundAction(msg.backgroundRunId,'stop');}else{stoppedPlans.current.add(msg.id); toast('Stopping after the current step.');}}} className="text-xs text-zinc-300 underline">Stop after current step</button>}
-                          {msg.backgroundRunId && <p role="status" className="text-sm text-zinc-300">{msg.backgroundStatus==='running'?'Running in background — you can close this page':msg.backgroundStatus==='paused'?'Paused before the next step':msg.backgroundStatus==='succeeded'?'Completed and saved in Library':'Needs attention'} · {msg.execSteps?.filter(s=>s.status==='success').length || 0} of {msg.execSteps?.length || 0} steps complete</p>}
+                          {msg.backgroundRunId && <p role="status" className="text-sm text-zinc-300">{msg.backgroundStatus==='running'?'Running in background — you can close this page':msg.backgroundStatus==='paused'?(firstShotNeedsApproval(msg.execSteps || [])?'First shot ready for review':'Paused before the next step'):msg.backgroundStatus==='succeeded'?'Completed and saved in Library':'Needs attention'} · {msg.execSteps?.filter(s=>s.status==='success').length || 0} of {msg.execSteps?.length || 0} steps complete</p>}
                           {msg.backgroundRunId && <AgentAllowance id={msg.backgroundRunId} used={msg.backgroundUsedCredits||0} limit={msg.backgroundBudgetCredits} onSaved={syncBackgroundRun} />}
                           {msg.backgroundStatus==='failed' && <AgentRecovery key={msg.backgroundRunId} id={msg.backgroundRunId!} planningModel={planningModel} onRecovered={syncBackgroundRun} />}
-                          {msg.backgroundStatus==='paused' && <button type="button" onClick={()=>void backgroundAction(msg.backgroundRunId!,'resume')} className="text-sm text-[#E7C477] underline">Resume saved plan</button>}
+                          {msg.backgroundStatus === 'paused' && (firstShotNeedsApproval(msg.execSteps || []) && msg.execSteps[0].jobId && msg.execSteps[0].resultUrl
+                            ? <FirstShotReview key={msg.execSteps[0].jobId} runId={msg.backgroundRunId!}
+                                takes={msg.execSteps[0].firstShotTakes ?? [{ jobId: msg.execSteps[0].jobId, url: msg.execSteps[0].resultUrl }]}
+                                video={msg.execSteps[0].type === 'generate_video'} previousError={msg.backgroundRunError} onUpdated={syncBackgroundRun} />
+                            : <button type="button" onClick={() => void backgroundAction(msg.backgroundRunId!, 'resume')}
+                                className="min-h-11 rounded-lg border border-[#E7C477]/50 px-3 text-sm font-semibold text-[#E7C477]">Resume saved plan</button>)}
                           {backgroundError && msg.backgroundRunId && <p role="status" className="text-sm text-amber-200">{backgroundError}. Your saved plan may still be running.</p>}
                           {!msg.backgroundRunId && msg.execSteps && <p className="text-xs text-zinc-400">{supportsBackground(msg.execSteps)?'Runs in the background after approval.':'Keep this page open while this plan runs.'}</p>}
-                          {msg.status === 'clarifying' && !msg.isExecuting && (supportsBackground(msg.execSteps || []) ? <AgentPlanApproval steps={msg.execSteps || []} onApprove={approval=>void runPipeline(msg.id,msg,approval)} /> :
+                          {msg.status === 'clarifying' && !msg.isExecuting && (supportsBackground(msg.execSteps || []) ? <AgentPlanApproval steps={productionStepsForExecution(msg.execSteps || [], clonedVoiceId)} onApprove={approval=>void runPipeline(msg.id,msg,approval)} /> :
                             <button
                               type="button"
                               onClick={() => runPipeline(msg.id, msg)}
@@ -3879,7 +4117,7 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
                 }
               }}
               disabled={isSending}
-              placeholder={interactionMode === 'plan'
+              placeholder={generalTaskMode ? 'Ask me to compare documents, analyze a CSV, calculate, research, or prepare a file…' : interactionMode === 'plan'
                 ? 'Ask for ideas, strategy, feedback, comparisons, or a step-by-step plan…'
                 : 'Describe a campaign, ask for research, or give Super Agent a task…'}
               className="w-full flex-1 min-h-[60px] h-[clamp(60px,18dvh,190px)] max-h-[300px] resize-none overflow-y-auto bg-transparent text-base font-medium leading-relaxed text-[#F5F1E8] outline-none placeholder:text-zinc-600 sm:text-lg"
@@ -3890,6 +4128,17 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
               
               {/* Left Row Controls */}
               <div className="flex flex-wrap items-center gap-2">
+                <button type="button" disabled={isSending || pendingDocumentUploads > 0} aria-pressed={generalTaskMode} onClick={() => setGeneralTaskMode(value => !value)}
+                  title="Read documents, calculate, research and prepare downloadable files"
+                  className={`flex min-h-10 items-center rounded-xl border px-3 text-xs font-semibold disabled:opacity-50 ${generalTaskMode ? 'border-[#E7C477]/60 bg-[#E7C477]/10 text-[#E7C477]' : 'border-white/15 text-zinc-300'}`}>
+                  General task{pendingDocumentUploads ? ' · reading file…' : generalTaskMode ? ' · on' : ''}
+                </button>
+                <button type="button" disabled={isSending} onClick={() => void sendMessage(
+                  inputText.trim() || 'Pitch fresh, relatable short-form reel ideas for my selected persona or project.',
+                  'reel-ideas',
+                )} className="flex min-h-10 items-center rounded-xl border border-[#E7C477]/35 px-3 text-xs font-semibold text-[#E7C477] disabled:opacity-50">
+                  Reel ideas
+                </button>
                 {currentExchangeMessages.length>0&&<button type="button" onClick={()=>setComposerExpanded(value=>!value)} aria-label={composerExpanded?'Compact prompt':'Expand prompt'} title="Expand prompt to change Plan / Build mode or write a longer brief" className="flex min-h-10 items-center rounded-xl border border-white/10 px-3 text-xs text-[#E7C477]">{composerExpanded?'Compact':'Expand'}</button>}
                 <label
                   htmlFor="draft-room-file-input"
@@ -3900,7 +4149,7 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
                     id="draft-room-file-input"
                     type="file"
                     ref={fileInputRef}
-                    accept="image/*,video/*,audio/*,.pdf,.txt"
+                    accept="image/*,video/*,audio/*,.pdf,.txt,.md,.csv,.json"
                     multiple
                     onChange={handleFileUpload}
                     className="sr-only"
@@ -4039,7 +4288,7 @@ function AgentProjectView({ personas, setPersonas, selectedPersonaId: propSelect
                 <button
                   type="button"
                   onClick={() => sendMessage()}
-                  disabled={isSending || (!inputText.trim() && attachments.length === 0)}
+                  disabled={isSending || pendingDocumentUploads > 0 || (!inputText.trim() && attachments.length === 0)}
                   className="min-w-24 justify-center rounded-xl bg-[#E7C477] px-4 py-2.5 text-sm font-bold text-[#17130A] shadow-[0_8px_24px_rgba(231,196,119,0.16)] transition-colors hover:bg-[#F2D58D] disabled:pointer-events-none disabled:opacity-40 flex items-center gap-2 shrink-0 cursor-pointer sm:min-w-28 sm:px-5"
                 >
                   <span>{interactionMode === 'plan' ? 'Ask' : 'Send'}</span>

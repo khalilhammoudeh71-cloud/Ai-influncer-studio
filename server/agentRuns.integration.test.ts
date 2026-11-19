@@ -139,6 +139,36 @@ test('approved plan survives reconnect, advances once, pauses/resumes and isolat
         const request=JSON.parse(videoJob.request!);
         assert.equal(request.sourceImage,'https://example.com/campaign.jpg');
         assert.equal(request.duration,5);assert.equal(request.resolution,'720p');assert.equal(request.aspectRatio,'4:5');
+
+        await pg.exec("UPDATE users SET credits=100 WHERE id='owner'");
+        const reviewRun = await call('POST /api/agent-runs', { ...body, messageId: 'first-shot-revision', firstShotReview: true });
+        assert.equal(reviewRun.code, 200);
+        const id = reviewRun.run.id;
+        const firstJob = reviewRun.run.steps[0].jobId;
+        const originalUrl = 'https://example.com/original-first-shot.jpg';
+        await db.update(mediaJobs).set({ status: 'succeeded', result: JSON.stringify({ url: originalUrl }) }).where(eq(mediaJobs.id, firstJob));
+        await advance();
+        const feedback = { baseJobId: firstJob, feedback: 'Make the lighting warmer' };
+        const quote = await call('POST /api/agent-runs/:id/first-shot-revision-quote', feedback, 'owner', { id });
+        assert.equal(quote.code, 200);
+        const jobsForReview = async () => (await db.select().from(mediaJobs)).filter(job => job.agentRunId === id);
+        assert.equal((await jobsForReview()).length, 1);
+        const revised = await call('POST /api/agent-runs/:id/:action', { ...feedback, version: quote.version }, 'owner', { id, action: 'revise-first-shot' });
+        assert.equal(revised.code, 200);
+        const revisionJob = revised.run.steps[0].jobId;
+        const revision = (await jobsForReview()).find(job => job.id === revisionJob)!;
+        assert.equal(revision.kind, 'edit');
+        assert.equal(JSON.parse(revision.request!).sourceImage, originalUrl);
+        await db.update(mediaJobs).set({ status: 'succeeded', result: JSON.stringify({ url: 'https://example.com/revised-first-shot.jpg' }) }).where(eq(mediaJobs.id, revisionJob));
+        await advance();
+        const paused = (await call('GET /api/agent-runs')).runs.find((run: any) => run.id === id);
+        assert.equal(paused.status, 'paused');
+        assert.equal(paused.steps[0].firstShotTakes.length, 2);
+        assert.equal((await jobsForReview()).length, 2);
+        const approved = await call('POST /api/agent-runs/:id/:action', { takeJobId: firstJob }, 'owner', { id, action: 'approve-first-shot' });
+        assert.equal(approved.code, 200);
+        const dependent = (await jobsForReview()).find(job => job.id === approved.run.steps[1].jobId)!;
+        assert.equal(JSON.parse(dependent.request!).sourceImage, originalUrl);
     }
     finally {
         if(previousSecret===undefined)delete process.env.CRON_SECRET;else process.env.CRON_SECRET=previousSecret;

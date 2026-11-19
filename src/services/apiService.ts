@@ -1,3 +1,4 @@
+import type { PlanningModel } from '../../shared/planningModels';
 import { withDeadline } from '../utils/requestDeadline';
 import { voiceCloningModel } from '../../shared/voiceCloningModels';
 import type { CloneResult } from '../../shared/personaVoiceLifecycle';
@@ -234,6 +235,7 @@ export const api = {
     review: (anchorImage:string,candidateImage:string) => request<{status:'passed'|'failed'|'uncertain'|'unavailable';reasons:string[]}>('/persona-identity/review',{method:'POST',body:JSON.stringify({anchorImage,candidateImage})}),
   },
   modelCatalog: {
+    planning: () => request<PlanningModel[]>('/agent/planning-models'),
     status: () => request<ModelCatalogStatus>('/model-catalog/status'),
     notifications: () => request<ModelCatalogNotificationsResponse>('/model-catalog/notifications'),
     markNotificationsRead: () => request<{ readAt: string; unreadCount: number }>('/model-catalog/notifications/read', { method: 'POST' }),

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  applyAgentImageModels,
   assessCostLadderReply,
   estimateSuperAgentCost,
   decodeAgentReply,
@@ -371,4 +372,20 @@ test('campaign parsing can defer asset validation exclusively for the review sta
  const raw={text:'Review campaign',suggestedSteps:[{type:'generate_image',params:{prompt:'A cup'}}],campaign:{title:'Coffee',platform:'Instagram',posts:[{date:'2026-09-18',title:'Cup',caption:'Concept',format:'image',assets:[{stepIndex:2,alt:'Cup'}]}]}};
  assert.throws(()=>decodeAgentReply(JSON.stringify(raw),'Create campaign'),/asset reference/);
  assert.deepEqual(decodeAgentReply(JSON.stringify(raw),'Create campaign',true).campaign,raw.campaign);
+});
+
+test('image generation and edits use the Agent mode model without changing video or special tools', () => {
+  const steps = [
+    { type: 'generate_image', params: { modelId: 'old' } },
+    { type: 'generate_image', params: { sourceImageFromStepIndex: 0 } },
+    { type: 'edit_image', params: { editType: 'bg-remover' } },
+    { type: 'generate_video', params: { modelId: 'video' } },
+  ];
+  const standard = applyAgentImageModels(steps, false);
+  assert.equal(standard[0].params.modelId, 'openai:gpt-image-2.6-sunburst');
+  assert.equal(standard[1].params.modelId, 'openai:gpt-image-2.6-sunburst');
+  const adult = applyAgentImageModels(steps, true);
+  assert.equal(adult[0].params.modelId, 'wavespeed:bytedance/seedream-v5.0-pro');
+  assert.equal(adult[1].params.modelId, 'wavespeed-edit:bytedance/seedream-v5.0-pro/edit');
+  assert.deepEqual(adult.slice(2), steps.slice(2));
 });

@@ -34,6 +34,7 @@ test('a fenced plan envelope preserves its explanation and yields reviewable ste
     assert.equal(data.status,'clarifying');
     assert.equal(data.suggestedSteps.length,2);
     assert.equal(data.suggestedSteps[1].params.sourceImageFromStepIndex,0);
+    assert.deepEqual(data.suggestedSteps.map((step:any) => step.params.modelId), ['openai:gpt-image-2.6-sunburst', 'openai:gpt-image-2.6-sunburst']);
   }finally{globalThis.fetch=originalFetch;if(priorKey===undefined)delete process.env.GEMINI_API_KEY;else process.env.GEMINI_API_KEY=priorKey;}
 });
 
@@ -101,7 +102,7 @@ test('a partial native plan is rejected and replaced as a whole before review', 
   try {
     const {default:router}=await import('./routes');const handler=(router as any).stack.find((layer:any)=>layer.route?.path==='/agent/chat').route.stack[0].handle;
     let data:any;await handler({body:{messages:[{role:'user',content:'Create a blue cup image then edit it green'}],voiceLlmModel:'adaptive-fast'},user:{id:'test-owner'}},{status(){return this;},json(value:any){data=value;return this;}});
-    assert.equal(data.suggestedSteps.length,2);assert.equal(calls,2);assert.equal(data.suggestedSteps[1].params.prompt,'Change only the cup to green');
+    assert.equal(data.suggestedSteps.length,2);assert.equal(calls,3);assert.equal(data.suggestedSteps[1].params.prompt,'Change only the cup to green');
   }finally{globalThis.fetch=originalFetch;names.forEach((name,index)=>{if(values[index]===undefined)delete process.env[name];else process.env[name]=values[index];});}
 });
 
@@ -305,5 +306,155 @@ test('gateway fallback preserves every billed OpenAI attempt in cumulative usage
       if (values[index] === undefined) delete process.env[name];
       else process.env[name] = values[index];
     });
+  }
+});
+
+test('a catalog selection retries only providers serving the selected model', async () => {
+  const names = ['WIRO_API_KEY', 'ATLASCLOUD_API_KEY'];
+  const previous = names.map(name => process.env[name]);
+  for (const name of names) process.env[name] = 'planning-catalog-test';
+  const originalFetch = globalThis.fetch;
+  const calls: string[] = [];
+  globalThis.fetch = async (url, init) => {
+    const host = new URL(String(url)).hostname;
+    const model = host === 'llm.wiro.ai' ? 'meta/Llama-3.3-70B-Instruct' : 'meta-llama/Llama-3.3-70B-Instruct';
+    if (String(url).includes('/models')) return Response.json({
+      data: ['llm.wiro.ai', 'api.atlascloud.ai'].includes(host) ? [{ id: model }] : [],
+    });
+    calls.push(`${host}:${JSON.parse(String(init?.body)).model}`);
+    if (host === 'llm.wiro.ai') throw new Error('Provider temporarily unreachable');
+    return Response.json({
+      choices: [{ finish_reason: 'stop', message: { content: JSON.stringify({ text: 'Ready.', suggestedSteps: [] }) } }],
+    });
+  };
+  try {
+    const { default: router } = await import('./routes');
+    const handler = (router as any).stack.find((layer: any) => layer.route?.path === '/agent/chat').route.stack[0].handle;
+    let data: any;
+    await handler({
+      body: { messages: [{ role: 'user', content: 'Hello' }], textPlanningModel: 'catalog:llama-3.3-70b-instruct', voiceLlmModel: 'grok' },
+      user: { id: 'test-owner' },
+    }, { status() { return this; }, json(value: any) { data = value; return this; } });
+    assert.deepEqual(calls, [
+      'llm.wiro.ai:meta/Llama-3.3-70B-Instruct',
+      'api.atlascloud.ai:meta-llama/Llama-3.3-70B-Instruct',
+    ]);
+    assert.equal(data.agentMode.provider, 'atlas');
+  } finally {
+    globalThis.fetch = originalFetch;
+    names.forEach((name, index) => {
+      if (previous[index] === undefined) delete process.env[name];
+      else process.env[name] = previous[index];
+    });
+  }
+});
+
+test('reel brainstorms return reviewable ideas and discard proposed generation steps', async () => {
+  const previousKey = process.env.GEMINI_API_KEY;
+  const originalFetch = globalThis.fetch;
+  process.env.GEMINI_API_KEY = 'test';
+  const ideas = ['Gate announcement', 'Out of office', 'Travel claim', 'Suitcase surprise'].map(title => ({
+    title, opening: 'Start with a visible action.', payoff: 'Reveal the cause.', shareReason: 'Send it to your travel partner.',
+  }));
+  let requestBody = '';
+  let creativeCalls = 0;
+  globalThis.fetch = async (_url, init) => {
+    creativeCalls++;
+    requestBody = String(init?.body || '');
+    return Response.json({ candidates: [{ finishReason: 'STOP', content: { parts: [{
+    text: JSON.stringify({
+      text: JSON.stringify({ ideas, pick: 1, reason: 'The opening works without sound.' }),
+      suggestedSteps: [{ type: 'generate_image', params: { prompt: 'A blue cup' } }],
+    }),
+  }] } }] });
+  };
+  try {
+    const { default: router } = await import('./routes');
+    const handler = (router as any).stack.find((layer: any) => layer.route?.path === '/agent/chat').route.stack[0].handle;
+    let data: any;
+    await handler({
+      body: { messages: [{ role: 'user', content: 'Trips and toothaches' }], brainstormReels: true, creatorProfile: { audience: 'Busy parents', goal: 'Saves', limits: 'Film alone on a phone' }, ideaFeedback: [{ idea: { title: 'Prior gate joke', opening: 'A closed airport gate', payoff: 'A toothache', shareReason: 'Travel partners' }, status: 'passed', reason: 'Too generic', updatedAt: 1 }], interactionMode: 'build', textPlanningModel: 'frontier-gemini-flash' },
+      user: { id: 'test-owner' },
+    }, { status() { return this; }, json(value: any) { data = value; return this; } });
+    assert.match(requestBody, /Busy parents/);
+    assert.match(requestBody, /Film alone on a phone/);
+    assert.equal(creativeCalls, 2);
+    assert.equal(data.creativeReview.status, 'reviewed');
+    assert.equal(data.creativeReview.provider, 'google');
+    assert.match(requestBody, /CREATIVE CRITIQUE AND REWRITE/);
+    assert.match(requestBody, /PROJECT IDEA FEEDBACK/);
+    assert.match(requestBody, /Prior gate joke/);
+    assert.match(requestBody, /Too generic/);
+    assert.equal(data.interactionMode, 'plan');
+    assert.deepEqual(data.reelIdeas.ideas, ideas);
+    assert.equal(data.reelIdeas.pick, 1);
+    assert.deepEqual(data.suggestedSteps, []);
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (previousKey === undefined) delete process.env.GEMINI_API_KEY;
+    else process.env.GEMINI_API_KEY = previousKey;
+  }
+});
+
+test('a selected reel can draft visual steps even when the hook contains the word wait', async () => {
+  const previousKey = process.env.GEMINI_API_KEY;
+  const originalFetch = globalThis.fetch;
+  process.env.GEMINI_API_KEY = 'test';
+  globalThis.fetch = async () => Response.json({ candidates: [{ finishReason: 'STOP', content: { parts: [{
+    text: JSON.stringify({ text: 'A 40-second reel outline.', suggestedSteps: [{ type: 'generate_image', params: { prompt: 'An airport gate, with no people' } }] }),
+  }] } }] });
+  try {
+    const { buildReelIdeaBrief } = await import('../shared/agentReelIdeas');
+    const { default: router } = await import('./routes');
+    const handler = (router as any).stack.find((layer: any) => layer.route?.path === '/agent/chat').route.stack[0].handle;
+    let data: any;
+    const content = buildReelIdeaBrief({
+      title: 'Wait for Boarding', opening: 'The gate agent calls for boarding.', payoff: 'The tooth interrupts.', shareReason: 'Travel partners recognize the moment.',
+    });
+    await handler({
+      body: { messages: [{ role: 'user', content }], buildReelIdea: true, interactionMode: 'build', textPlanningModel: 'frontier-gemini-flash' },
+      user: { id: 'test-owner' },
+    }, { status() { return this; }, json(value: any) { data = value; return this; } });
+    assert.equal(data.status, 'clarifying');
+    assert.equal(data.suggestedSteps.length, 1);
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (previousKey === undefined) delete process.env.GEMINI_API_KEY;
+    else process.env.GEMINI_API_KEY = previousKey;
+  }
+});
+
+test('general task mode uses the selected model for tools and never proposes studio execution', async () => {
+  const priorKey = process.env.GEMINI_API_KEY;
+  process.env.GEMINI_API_KEY = 'test';
+  const originalFetch = globalThis.fetch;
+  const requests: { url: string; body: any }[] = [];
+  globalThis.fetch = async (url, init) => {
+    requests.push({ url: String(url), body: JSON.parse(String(init?.body || '{}')) });
+    const text = requests.length === 1
+      ? JSON.stringify({ text: 'Calculate the requested discount.', suggestedSteps: [], campaign: null })
+      : requests.length === 2
+        ? JSON.stringify({ plan: ['Calculate the discounted amount'], toolCalls: [{ tool: 'calculate', args: { expression: '250*(1-20/100)' } }] })
+        : JSON.stringify({ text: 'The discounted amount is 200.', status: 'complete' });
+    return Response.json({ candidates: [{ finishReason: 'STOP', content: { parts: [{ text }] } }], usageMetadata: { promptTokenCount: 10, candidatesTokenCount: 5 } });
+  };
+  try {
+    const { default: router } = await import('./routes');
+    const handler = (router as any).stack.find((layer: any) => layer.route?.path === '/agent/chat').route.stack[0].handle;
+    let data: any;
+    await handler({ body: { messages: [{ role: 'user', content: 'Calculate 20% off 250' }], generalTask: true, interactionMode: 'build', textPlanningModel: 'frontier-gemini-flash' }, user: { id: 'test-owner' } }, { status() { return this; }, json(value: any) { data = value; return this; } });
+    assert.equal(requests.length, 3);
+    assert.equal(new Set(requests.map(request => request.url)).size, 1);
+    assert.equal(data.interactionMode, 'plan');
+    assert.equal(data.generalTask.status, 'complete');
+    assert.equal(data.generalTask.modelCalls, 2);
+    assert.match(data.generalTask.trace[0].summary, /200/);
+    assert.match(data.text, /200/);
+    assert.deepEqual(data.suggestedSteps, []);
+    assert.match(JSON.stringify(requests[1].body), /general-purpose task assistant/);
+    assert.doesNotMatch(JSON.stringify(requests[1].body), /AVAILABLE STEPS/);
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (priorKey === undefined) delete process.env.GEMINI_API_KEY; else process.env.GEMINI_API_KEY = priorKey;
   }
 });

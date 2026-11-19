@@ -43,3 +43,17 @@ test('video duration and resolution survive approval validation',()=>{
  assert.equal(plan[1].params.duration,5);assert.equal(plan[1].params.resolution,'720p');
  for(const duration of [-1,0,1000,'forever'])assert.throws(()=>validateRunSteps([{type:'generate_video',params:{prompt:'Motion',duration}}]));
 });
+
+test('a completed first shot blocks the next job until approval', () => {
+    const steps = validateRunSteps([
+        { type: 'generate_image', params: { prompt: 'A reference frame' } },
+        { type: 'generate_video', params: { prompt: 'Animate the frame', sourceImageFromStepIndex: 0 } },
+    ]);
+    steps[0].reviewBeforeContinuing = true;
+    assert.deepEqual(nextRunAction(steps), { kind: 'create', index: 0 });
+    steps[0].status = 'success';
+    steps[0].resultUrl = 'https://example.com/reference.png';
+    assert.deepEqual(nextRunAction(steps), { kind: 'review-first-shot' });
+    steps[0].reviewBeforeContinuing = false;
+    assert.deepEqual(nextRunAction(steps), { kind: 'create', index: 1 });
+});
